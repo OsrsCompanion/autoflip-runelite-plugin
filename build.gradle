@@ -1,0 +1,33 @@
+plugins {
+    id 'java'
+}
+
+def runeLiteVersion = 'latest.release'
+def pluginMainClass = 'gg.autoflip.AutoFlipPluginTest'
+
+group = 'gg.autoflip'
+version = '0.1-SNAPSHOT'
+
+dependencies {
+    compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
+    compileOnly group: 'javax.inject', name: 'javax.inject', version: '1'
+
+    testImplementation group: 'net.runelite', name: 'client', version: runeLiteVersion
+    testImplementation group: 'net.runelite', name: 'jshell', version: runeLiteVersion
+    testImplementation group: 'javax.inject', name: 'javax.inject', version: '1'
+    testImplementation group: 'junit', name: 'junit', version: '4.13.2'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release.set(11)
+}
+
+tasks.register('runDev', JavaExec) {
+    group = 'application'
+    description = 'Run RuneLite with AutoFlip loaded as an external plugin'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = pluginMainClass
+    jvmArgs '-ea'
+    args '--developer-mode', '--debug'
+}
