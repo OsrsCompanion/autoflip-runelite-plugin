@@ -4023,16 +4023,11 @@ int x = base.x + cardOffsetX;
             return false;
         }
 
-        return param1 == widgetInfoId(net.runelite.api.widgets.WidgetInfo.INVENTORY)
-            || param1 == widgetInfoId(net.runelite.api.widgets.WidgetInfo.GRAND_EXCHANGE_INVENTORY_ITEMS_CONTAINER)
-            || param1 == widgetInfoId(net.runelite.api.widgets.WidgetInfo.FIXED_VIEWPORT_INVENTORY_CONTAINER)
-            || param1 == widgetInfoId(net.runelite.api.widgets.WidgetInfo.RESIZABLE_VIEWPORT_INVENTORY_CONTAINER)
-            || param1 == widgetInfoId(net.runelite.api.widgets.WidgetInfo.RESIZABLE_VIEWPORT_BOTTOM_LINE_INVENTORY_CONTAINER);
-    }
-
-    private int widgetInfoId(net.runelite.api.widgets.WidgetInfo widgetInfo)
-    {
-        return widgetInfo == null ? -1 : widgetInfo.getId();
+        return param1 == net.runelite.api.widgets.ComponentID.INVENTORY_CONTAINER
+            || param1 == net.runelite.api.widgets.ComponentID.GRAND_EXCHANGE_INVENTORY_INVENTORY_ITEM_CONTAINER
+            || param1 == net.runelite.api.widgets.ComponentID.FIXED_VIEWPORT_INVENTORY_CONTAINER
+            || param1 == net.runelite.api.widgets.ComponentID.RESIZABLE_VIEWPORT_INVENTORY_CONTAINER
+            || param1 == net.runelite.api.widgets.ComponentID.RESIZABLE_VIEWPORT_BOTTOM_LINE_INVENTORY_CONTAINER;
     }
 
     private String cleanAutoFlipMenuTarget(String target)
@@ -4501,12 +4496,12 @@ int x = base.x + cardOffsetX;
         java.util.Map<Integer, java.util.List<Rectangle>> mutable = new java.util.HashMap<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
 
-        addAutoFlipInventoryBoundsFromWidgetInfo(mutable, seen, net.runelite.api.widgets.WidgetInfo.GRAND_EXCHANGE_INVENTORY_ITEMS_CONTAINER);
-        addAutoFlipInventoryBoundsFromWidgetInfo(mutable, seen, net.runelite.api.widgets.WidgetInfo.INVENTORY);
-        addAutoFlipInventoryBoundsFromWidgetInfo(mutable, seen, net.runelite.api.widgets.WidgetInfo.FIXED_VIEWPORT_INVENTORY_CONTAINER);
-        addAutoFlipInventoryBoundsFromWidgetInfo(mutable, seen, net.runelite.api.widgets.WidgetInfo.RESIZABLE_VIEWPORT_INVENTORY_CONTAINER);
-        addAutoFlipInventoryBoundsFromWidgetInfo(mutable, seen, net.runelite.api.widgets.WidgetInfo.RESIZABLE_VIEWPORT_BOTTOM_LINE_INVENTORY_CONTAINER);
-        addAutoFlipInventoryBoundsFromWidgetInfo(mutable, seen, net.runelite.api.widgets.WidgetInfo.BANK_INVENTORY_ITEMS_CONTAINER);
+        addAutoFlipInventoryBoundsFromComponentId(mutable, seen, net.runelite.api.widgets.ComponentID.GRAND_EXCHANGE_INVENTORY_INVENTORY_ITEM_CONTAINER);
+        addAutoFlipInventoryBoundsFromComponentId(mutable, seen, net.runelite.api.widgets.ComponentID.INVENTORY_CONTAINER);
+        addAutoFlipInventoryBoundsFromComponentId(mutable, seen, net.runelite.api.widgets.ComponentID.FIXED_VIEWPORT_INVENTORY_CONTAINER);
+        addAutoFlipInventoryBoundsFromComponentId(mutable, seen, net.runelite.api.widgets.ComponentID.RESIZABLE_VIEWPORT_INVENTORY_CONTAINER);
+        addAutoFlipInventoryBoundsFromComponentId(mutable, seen, net.runelite.api.widgets.ComponentID.RESIZABLE_VIEWPORT_BOTTOM_LINE_INVENTORY_CONTAINER);
+        addAutoFlipInventoryBoundsFromComponentId(mutable, seen, net.runelite.api.widgets.ComponentID.BANK_INVENTORY_ITEM_CONTAINER);
 
         if (mutable.isEmpty())
         {
@@ -4528,19 +4523,19 @@ int x = base.x + cardOffsetX;
             : java.util.Collections.unmodifiableMap(frozen);
     }
 
-    private void addAutoFlipInventoryBoundsFromWidgetInfo(
+    private void addAutoFlipInventoryBoundsFromComponentId(
         java.util.Map<Integer, java.util.List<Rectangle>> out,
         java.util.Set<String> seen,
-        net.runelite.api.widgets.WidgetInfo widgetInfo)
+        int componentId)
     {
         try
         {
-            if (client == null || out == null || seen == null || widgetInfo == null)
+            if (client == null || out == null || seen == null || componentId <= 0)
             {
                 return;
             }
 
-            Widget widget = client.getWidget(widgetInfo);
+            Widget widget = client.getWidget(componentId);
             if (widget == null || widget.isHidden())
             {
                 return;
@@ -4550,7 +4545,7 @@ int x = base.x + cardOffsetX;
         }
         catch (Throwable error)
         {
-            logAutoFlipUiError("addAutoFlipInventoryBoundsFromWidgetInfo", error);
+            logAutoFlipUiError("addAutoFlipInventoryBoundsFromComponentId", error);
         }
     }
 
@@ -7029,19 +7024,19 @@ int x = base.x + cardOffsetX;
                 return false;
             }
 
-            net.runelite.api.widgets.Widget bankContainer = client.getWidget(net.runelite.api.widgets.WidgetInfo.BANK_CONTAINER);
+            net.runelite.api.widgets.Widget bankContainer = client.getWidget(net.runelite.api.widgets.ComponentID.BANK_CONTAINER);
             hasBankContainer = bankContainer != null;
             bankContainerVisible = bankContainer != null && !bankContainer.isHidden();
 
-            net.runelite.api.widgets.Widget bankTitle = client.getWidget(net.runelite.api.widgets.WidgetInfo.BANK_TITLE_BAR);
+            net.runelite.api.widgets.Widget bankTitle = client.getWidget(net.runelite.api.widgets.ComponentID.BANK_TITLE_BAR);
             hasBankTitle = bankTitle != null;
             bankTitleVisible = bankTitle != null && !bankTitle.isHidden();
 
-            net.runelite.api.widgets.Widget bankItemContainer = client.getWidget(net.runelite.api.widgets.WidgetInfo.BANK_ITEM_CONTAINER);
+            net.runelite.api.widgets.Widget bankItemContainer = client.getWidget(net.runelite.api.widgets.ComponentID.BANK_ITEM_CONTAINER);
             hasBankItemContainer = bankItemContainer != null;
             bankItemContainerVisible = bankItemContainer != null && !bankItemContainer.isHidden();
 
-            net.runelite.api.widgets.Widget bankInventoryContainer = client.getWidget(net.runelite.api.widgets.WidgetInfo.BANK_INVENTORY_ITEMS_CONTAINER);
+            net.runelite.api.widgets.Widget bankInventoryContainer = client.getWidget(net.runelite.api.widgets.ComponentID.BANK_INVENTORY_ITEM_CONTAINER);
             hasBankInventoryContainer = bankInventoryContainer != null;
             bankInventoryContainerVisible = bankInventoryContainer != null && !bankInventoryContainer.isHidden();
 
@@ -15599,7 +15594,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 return;
             }
 
-            Widget offerContainer = client == null ? null : client.getWidget(net.runelite.api.widgets.WidgetInfo.GRAND_EXCHANGE_OFFER_CONTAINER);
+            Widget offerContainer = client == null ? null : client.getWidget(net.runelite.api.widgets.ComponentID.GRAND_EXCHANGE_OFFER_CONTAINER);
             int itemId = offerContainer == null ? 0 : canonicalizeAutoFlipInventoryItemId(offerContainer.getItemId());
             if (itemId <= 0)
             {
@@ -18337,7 +18332,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 return null;
             }
 
-            Widget offerContainer = client.getWidget(net.runelite.api.widgets.WidgetInfo.GRAND_EXCHANGE_OFFER_CONTAINER);
+            Widget offerContainer = client.getWidget(net.runelite.api.widgets.ComponentID.GRAND_EXCHANGE_OFFER_CONTAINER);
             if (offerContainer == null || offerContainer.isHidden())
             {
                 return null;
@@ -18717,7 +18712,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 return "";
             }
 
-            Widget offerContainer = client.getWidget(net.runelite.api.widgets.WidgetInfo.GRAND_EXCHANGE_OFFER_CONTAINER);
+            Widget offerContainer = client.getWidget(net.runelite.api.widgets.ComponentID.GRAND_EXCHANGE_OFFER_CONTAINER);
             if (offerContainer != null && !offerContainer.isHidden())
             {
                 int offerItemId = offerContainer.getItemId();
@@ -18727,7 +18722,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 }
             }
 
-            Widget offerText = client.getWidget(net.runelite.api.widgets.WidgetInfo.GRAND_EXCHANGE_OFFER_TEXT);
+            Widget offerText = client.getWidget(net.runelite.api.widgets.InterfaceID.GRAND_EXCHANGE, 27);
             if (offerText != null && !offerText.isHidden())
             {
                 int textItemId = offerText.getItemId();
@@ -18860,7 +18855,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 return 0;
             }
 
-            Widget offerText = client.getWidget(net.runelite.api.widgets.WidgetInfo.GRAND_EXCHANGE_OFFER_TEXT);
+            Widget offerText = client.getWidget(net.runelite.api.widgets.InterfaceID.GRAND_EXCHANGE, 27);
             if (offerText != null && !offerText.isHidden())
             {
                 int visibleGp = readAutoFlipVisibleOrdinarySellCurrentPriceGp(offerText, 0);
@@ -18870,7 +18865,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 }
             }
 
-            Widget offerContainer = client.getWidget(net.runelite.api.widgets.WidgetInfo.GRAND_EXCHANGE_OFFER_CONTAINER);
+            Widget offerContainer = client.getWidget(net.runelite.api.widgets.ComponentID.GRAND_EXCHANGE_OFFER_CONTAINER);
             if (offerContainer == null || offerContainer.isHidden())
             {
                 return readAutoFlipCurrentOrdinarySellPriceFromOffers();
@@ -18918,8 +18913,8 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             }
             autoFlipLastOrdinarySellWidgetDumpMs = now;
 
-            Widget offerText = client.getWidget(net.runelite.api.widgets.WidgetInfo.GRAND_EXCHANGE_OFFER_TEXT);
-            Widget offerContainer = client.getWidget(net.runelite.api.widgets.WidgetInfo.GRAND_EXCHANGE_OFFER_CONTAINER);
+            Widget offerText = client.getWidget(net.runelite.api.widgets.InterfaceID.GRAND_EXCHANGE, 27);
+            Widget offerContainer = client.getWidget(net.runelite.api.widgets.ComponentID.GRAND_EXCHANGE_OFFER_CONTAINER);
 
             StringBuilder dump = new StringBuilder();
             dump.append("AUTOFLIP_ORDINARY_SELL_WIDGET_DUMP");
@@ -21386,7 +21381,7 @@ return found;
             );
 
             net.runelite.api.widgets.Widget offerContainer = client.getWidget(
-                net.runelite.api.widgets.WidgetInfo.GRAND_EXCHANGE_OFFER_CONTAINER
+                net.runelite.api.widgets.ComponentID.GRAND_EXCHANGE_OFFER_CONTAINER
             );
             if (offerContainer == null || offerContainer.isHidden())
             {
