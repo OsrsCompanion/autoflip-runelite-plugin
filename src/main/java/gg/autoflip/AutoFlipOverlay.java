@@ -40,7 +40,7 @@ public class AutoFlipOverlay extends Overlay
     private transient boolean autoFlipSetupLogoWatermarkLoadAttempted;
     private static final String LOGO_RESOURCE = "/gg/autoflip/AppIcon_GeButton24.png";
     private static final String MARKET_LINK_ICON_RESOURCE = "/gg/autoflip/AppIcon_Favicon4.png";
-    private static final String HEADER_BRAND_RESOURCE = "/autoflip/setup_ui/images/autoflip_logo_clean_moveable.png";
+    private static final String HEADER_BRAND_RESOURCE = "/autoflip/setup_ui/images/autoflip-gg-custom-transparent.png";
     private static final Path AUTOFLIP_PLUGIN_DATA_DIR = Paths.get(
         System.getProperty("user.home", "."),
         ".runelite",
@@ -48,6 +48,7 @@ public class AutoFlipOverlay extends Overlay
         "autoflip"
     );
     private static final Path OVERLAY_DEV_CONFIG_PATH = AUTOFLIP_PLUGIN_DATA_DIR.resolve("overlay_dev_config.properties");
+    private static final Path LOCAL_OVERLAY_DEV_CONFIG_PATH = Paths.get("_runtime", "overlay_dev_config.properties");
 
     private static final PlanCard[] PLACEHOLDER_PLAN = new PlanCard[]
     {
@@ -2451,7 +2452,7 @@ public class AutoFlipOverlay extends Overlay
                             try
                             {
                                 java.util.Properties autoFlipConfirmProps = new java.util.Properties();
-                                java.nio.file.Path autoFlipConfirmPath = OVERLAY_DEV_CONFIG_PATH;
+                                java.nio.file.Path autoFlipConfirmPath = resolveOverlayDevConfigPath();
                                 if (java.nio.file.Files.exists(autoFlipConfirmPath))
                                 {
                                     try (java.io.Reader autoFlipConfirmReader = java.nio.file.Files.newBufferedReader(autoFlipConfirmPath, java.nio.charset.StandardCharsets.UTF_8))
@@ -2501,7 +2502,7 @@ public class AutoFlipOverlay extends Overlay
                         try
                         {
                             java.util.Properties autoFlipReviewProps = new java.util.Properties();
-                            java.nio.file.Path autoFlipReviewPath = OVERLAY_DEV_CONFIG_PATH;
+                            java.nio.file.Path autoFlipReviewPath = resolveOverlayDevConfigPath();
                             if (java.nio.file.Files.exists(autoFlipReviewPath))
                             {
                                 try (java.io.Reader autoFlipReviewReader = java.nio.file.Files.newBufferedReader(autoFlipReviewPath, java.nio.charset.StandardCharsets.UTF_8))
@@ -2608,7 +2609,7 @@ public class AutoFlipOverlay extends Overlay
                 {
                     try
                     {
-                        java.nio.file.Path path = OVERLAY_DEV_CONFIG_PATH;
+                        java.nio.file.Path path = resolveOverlayDevConfigPath();
                         java.util.Properties props = new java.util.Properties();
                         try (java.io.Reader reader = java.nio.file.Files.newBufferedReader(path, java.nio.charset.StandardCharsets.UTF_8))
                         {
@@ -2645,7 +2646,7 @@ public class AutoFlipOverlay extends Overlay
                 String priceHintText = "AutoFlip enters optimized price";
                 try
                 {
-                    java.nio.file.Path path = OVERLAY_DEV_CONFIG_PATH;
+                    java.nio.file.Path path = resolveOverlayDevConfigPath();
                     if (java.nio.file.Files.exists(path))
                     {
                         java.util.Properties props = new java.util.Properties();
@@ -4056,7 +4057,7 @@ public class AutoFlipOverlay extends Overlay
 
             lastAttemptMs = now;
 
-            Path path = OVERLAY_DEV_CONFIG_PATH;
+            Path path = resolveOverlayDevConfigPath();
 
             try
             {
@@ -4428,6 +4429,19 @@ private float cardNameFont() { return getFloat("card.font.name", 10.0f); }
                 getInt("sell.guidance.bank.status.alpha", 255)
             );
         }
+    }
+
+    private static Path resolveOverlayDevConfigPath()
+    {
+        if (Files.exists(OVERLAY_DEV_CONFIG_PATH))
+        {
+            return OVERLAY_DEV_CONFIG_PATH;
+        }
+        if (Files.exists(LOCAL_OVERLAY_DEV_CONFIG_PATH))
+        {
+            return LOCAL_OVERLAY_DEV_CONFIG_PATH;
+        }
+        return OVERLAY_DEV_CONFIG_PATH;
     }
 
     private Image getLogoImage()

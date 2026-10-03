@@ -46,6 +46,7 @@ import java.util.zip.GZIPOutputStream;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.client.callback.ClientThread;
+import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.GrandExchangeOfferState;
 import net.runelite.api.Player;
@@ -108,6 +109,7 @@ private static final Path GE_TRADE_HISTORY = RUNTIME_DIR.resolve("ge_trade_histo
     private static final Path GE_DEBUG = RUNTIME_DIR.resolve("ge_offers_seen.jsonl");
     private static final Path GE_WIDGET_BOUNDS = RUNTIME_DIR.resolve("ge_widget_bounds.jsonl");
     private static final Path OVERLAY_DEV_CONFIG = RUNTIME_DIR.resolve("overlay_dev_config.properties");
+    private static final Path LOCAL_OVERLAY_DEV_CONFIG = Paths.get("_runtime", "overlay_dev_config.properties");
     private static final Path SENDER_LOG = RUNTIME_DIR.resolve("sender_log.jsonl");
     private static final Path ORDINARY_SELL_DEBUG_LOG = RUNTIME_DIR.resolve("ordinary_sell_debug.log");
     private static final Path INJECTION_TRACE_LOG = RUNTIME_DIR.resolve("autoflip_injection_trace.log");
@@ -205,6 +207,11 @@ private volatile boolean geHeaderFoundThisScan = false;
     private volatile java.util.List<AutoFlipToBuyItem> autoFlipToBuyItems = java.util.Collections.emptyList();
     private volatile long autoFlipToBuyLastMarketRefreshAtMs = 0L;
     private volatile boolean autoFlipToBuyRefreshInFlight = false;
+    private volatile boolean autoFlipStartupWarmAttempted = false;
+    private volatile boolean autoFlipBoardWarmInFlight = false;
+    private volatile java.util.List<AutoFlipBoardCard> autoFlipWarmBoardCards = java.util.Collections.emptyList();
+    private volatile String autoFlipWarmBoardCacheKey = "";
+    private volatile long autoFlipWarmBoardBuiltAtMs = 0L;
     private final java.util.concurrent.ConcurrentHashMap<Integer, Long> autoFlipSellPriceCacheByItemId = new java.util.concurrent.ConcurrentHashMap<>();
     // Collector-owned /latest data is copied into this transient plugin cache; the plugin is never a Pi price writer.
     private final java.util.concurrent.ConcurrentHashMap<Integer, Long> autoFlipBuyPriceCacheByItemId = new java.util.concurrent.ConcurrentHashMap<>();
@@ -457,6 +464,7 @@ private volatile boolean geHeaderFoundThisScan = false;
     public void onGameTick(GameTick event)
     {
         refreshAccountKey();
+        maybeStartAutoFlipStartupWarm();
         pollGrandExchangeOffers();
 
         if (autoFlipGeWidgetBoundsDirty || geWindowOpenForOverlay)
@@ -644,6 +652,7 @@ tickCounter++;
     {
         if (event != null && isAutoFlipGrandExchangeInterfaceGroup(event.getGroupId()))
         {
+            ensureAutoFlipBoardWarmAsync("ge_widget_loaded");
             beginAutoFlipGeSessionInventoryCache();
             autoFlipGeWidgetBoundsDirty = true;
             autoFlipStateDetectorLabelCacheDirty = true;
@@ -2086,7 +2095,7 @@ tickCounter++;
     {
         try
         {
-            java.nio.file.Path path = OVERLAY_DEV_CONFIG;
+            java.nio.file.Path path = resolveOverlayConfigReadPath();
 
             if (!java.nio.file.Files.exists(path))
             {
@@ -3118,9 +3127,10 @@ int x = base.x + cardOffsetX;
             Files.createDirectories(RUNTIME_DIR);
 
             List<String> lines = new ArrayList<>();
-            if (Files.exists(OVERLAY_DEV_CONFIG))
+            Path seedPath = Files.exists(OVERLAY_DEV_CONFIG) ? OVERLAY_DEV_CONFIG : resolveOverlayConfigReadPath();
+            if (Files.exists(seedPath))
             {
-                lines.addAll(Files.readAllLines(OVERLAY_DEV_CONFIG, StandardCharsets.UTF_8));
+                lines.addAll(Files.readAllLines(seedPath, StandardCharsets.UTF_8));
             }
 
             boolean replaced = false;
@@ -3156,13 +3166,14 @@ int x = base.x + cardOffsetX;
     private Properties readOverlayConfig()
     {
         Properties props = new Properties();
+        Path readPath = resolveOverlayConfigReadPath();
 
-        if (!Files.exists(OVERLAY_DEV_CONFIG))
+        if (!Files.exists(readPath))
         {
             return props;
         }
 
-        try (InputStream in = Files.newInputStream(OVERLAY_DEV_CONFIG))
+        try (InputStream in = Files.newInputStream(readPath))
         {
             props.load(in);
         }
@@ -3172,6 +3183,19 @@ int x = base.x + cardOffsetX;
         }
 
         return props;
+    }
+
+    private static Path resolveOverlayConfigReadPath()
+    {
+        if (Files.exists(OVERLAY_DEV_CONFIG))
+        {
+            return OVERLAY_DEV_CONFIG;
+        }
+        if (Files.exists(LOCAL_OVERLAY_DEV_CONFIG))
+        {
+            return LOCAL_OVERLAY_DEV_CONFIG;
+        }
+        return OVERLAY_DEV_CONFIG;
     }
 
     private void writeIntConfig(String key, int value)
@@ -3186,9 +3210,10 @@ int x = base.x + cardOffsetX;
             Files.createDirectories(RUNTIME_DIR);
 
             List<String> lines = new ArrayList<>();
-            if (Files.exists(OVERLAY_DEV_CONFIG))
+            Path seedPath = Files.exists(OVERLAY_DEV_CONFIG) ? OVERLAY_DEV_CONFIG : resolveOverlayConfigReadPath();
+            if (Files.exists(seedPath))
             {
-                lines.addAll(Files.readAllLines(OVERLAY_DEV_CONFIG, StandardCharsets.UTF_8));
+                lines.addAll(Files.readAllLines(seedPath, StandardCharsets.UTF_8));
             }
 
             boolean replaced = false;
@@ -11255,14 +11280,22 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
     public void maybeRefreshAutoFlipBoardCache()
     {
-        // AUTOFLIP_LOCAL_PAYLOAD_CACHE_ONLY_RENDER_ROUTE_V1
-        // Overlay render may warm the payload cache, but it must not build/fetch a ranked board.
-        if (isAutoFlipPayloadFresh())
+        // AUTOFLIP_STARTUP_AND_GE_ONLY_WARM_CACHE_V1
+        // Startup may warm once during normal login loading. After that, refreshes happen only
+        // while the GE interface is open, so the plugin does not keep doing background market
+        // work during unrelated gameplay.
+        if (!autoFlipStartupWarmAttempted)
+        {
+            maybeStartAutoFlipStartupWarm();
+            return;
+        }
+
+        if (!geWindowOpenForOverlay)
         {
             return;
         }
 
-        ensureAutoFlipPayloadFreshAsync();
+        ensureAutoFlipBoardWarmAsync("ge_open_render");
     }
 
     private boolean isAutoFlipPayloadFresh()
@@ -11276,6 +11309,177 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             && payload.contains("\"schema\":\"autoflip.plugin_ranked_pool_payload.v1\"")
             && fetchedAt > 0L
             && System.currentTimeMillis() - fetchedAt < ttl;
+    }
+
+    private void maybeStartAutoFlipStartupWarm()
+    {
+        if (autoFlipStartupWarmAttempted || client == null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (client.getGameState() != GameState.LOGGED_IN)
+            {
+                return;
+            }
+        }
+        catch (Throwable error)
+        {
+            logAutoFlipUiError("startup_warm_game_state", error);
+            return;
+        }
+
+        autoFlipStartupWarmAttempted = true;
+        ensureAutoFlipBoardWarmAsync("startup_login");
+    }
+
+    private boolean isAutoFlipWarmBoardCacheFresh()
+    {
+        java.util.List<AutoFlipBoardCard> cards = autoFlipWarmBoardCards;
+        String key = autoFlipWarmBoardCacheKey;
+        return isAutoFlipPayloadFresh()
+            && cards != null
+            && !compactAutoFlipBoardCards(cards).isEmpty()
+            && key != null
+            && !key.isEmpty()
+            && key.equals(buildAutoFlipWarmBoardCacheKey());
+    }
+
+    private String buildAutoFlipWarmBoardCacheKey()
+    {
+        boolean freeToPlay = isAutoFlipFreeToPlayAccount();
+        int hours = getAutoFlipPayloadHourBucket(autoFlipMenuHoursAway);
+        long budget = getAutoFlipEffectiveBudgetGp();
+        String budgetBand = getAutoFlipPayloadBudgetBand(budget);
+        String payloadKey = autoFlipPayloadHash == null || autoFlipPayloadHash.isEmpty()
+            ? autoFlipPayloadGeneratedAt
+            : autoFlipPayloadHash;
+
+        return "payload=" + safe(payloadKey)
+            + "|f2p=" + freeToPlay
+            + "|hours=" + hours
+            + "|budget_band=" + safe(budgetBand)
+            + "|strategy=" + safe(normalizeAutoFlipRisk(autoFlipMenuRiskMode));
+    }
+
+    private void ensureAutoFlipBoardWarmAsync(String reason)
+    {
+        if (autoFlipBoardWarmInFlight || isAutoFlipWarmBoardCacheFresh())
+        {
+            return;
+        }
+
+        autoFlipBoardWarmInFlight = true;
+
+        Thread worker = new Thread(() ->
+        {
+            long startedAtMs = System.currentTimeMillis();
+            try
+            {
+                logAutoFlipVerbose("AUTOFLIP_BOARD_WARM started reason=" + safe(reason));
+
+                if (!fetchAutoFlipPayloadIfNeeded(false))
+                {
+                    logAutoFlipVerbose("AUTOFLIP_BOARD_WARM loaded=false reason=" + safe(reason) + " cause=payload_unavailable");
+                    return;
+                }
+
+                String key = buildAutoFlipWarmBoardCacheKey();
+                java.util.List<AutoFlipBoardCard> cards = buildAutoFlipBoardFromLocalPayload();
+                if (cards == null || compactAutoFlipBoardCards(cards).isEmpty())
+                {
+                    logAutoFlipVerbose("AUTOFLIP_BOARD_WARM loaded=false reason=" + safe(reason) + " cause=cards_empty");
+                    return;
+                }
+
+                autoFlipWarmBoardCards = snapshotAutoFlipBoardCards(cards);
+                autoFlipWarmBoardCacheKey = key;
+                autoFlipWarmBoardBuiltAtMs = System.currentTimeMillis();
+
+                logAutoFlipVerbose(
+                    "AUTOFLIP_BOARD_WARM"
+                        + " loaded=true"
+                        + " reason=" + safe(reason)
+                        + " cards=" + compactAutoFlipBoardCards(cards).size()
+                        + " elapsed_ms=" + Math.max(0L, autoFlipWarmBoardBuiltAtMs - startedAtMs)
+                        + " payload_hash=" + safe(autoFlipPayloadHash)
+                );
+            }
+            catch (Throwable error)
+            {
+                logAutoFlipUiError("board_warm_" + safe(reason), error);
+            }
+            finally
+            {
+                autoFlipBoardWarmInFlight = false;
+            }
+        }, "autoflip-board-warm-cache");
+
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private java.util.List<AutoFlipBoardCard> getAutoFlipWarmBoardCardsForOptimize()
+    {
+        if (!isAutoFlipWarmBoardCacheFresh())
+        {
+            return java.util.Collections.emptyList();
+        }
+
+        java.util.List<AutoFlipBoardCard> warmCards = compactAutoFlipBoardCards(autoFlipWarmBoardCards);
+        if (warmCards.isEmpty())
+        {
+            return java.util.Collections.emptyList();
+        }
+
+        java.util.List<Integer> availableSlots = new java.util.ArrayList<>(getAutoFlipAvailableGeSlotIndicesForOverlay());
+        java.util.List<Integer> filteredSlots = new java.util.ArrayList<>();
+        for (Integer slot : availableSlots)
+        {
+            if (slot != null && !isAutoFlipBoardSlotRetired(slot))
+            {
+                filteredSlots.add(slot);
+            }
+        }
+
+        if (filteredSlots.isEmpty())
+        {
+            return java.util.Collections.emptyList();
+        }
+
+        java.util.List<AutoFlipBoardCard> out = new java.util.ArrayList<>(java.util.Collections.nCopies(8, null));
+        int slotIndex = 0;
+        for (AutoFlipBoardCard card : warmCards)
+        {
+            if (card == null || card.getItemId() <= 0)
+            {
+                continue;
+            }
+
+            if (slotIndex >= filteredSlots.size())
+            {
+                break;
+            }
+
+            int slot = filteredSlots.get(slotIndex);
+            if (slot >= 0 && slot < out.size())
+            {
+                out.set(slot, copyAutoFlipBoardCardForSlot(card, slot));
+                slotIndex++;
+            }
+        }
+
+        logAutoFlipVerbose(
+            "AUTOFLIP_BOARD_WARM_USE"
+                + " cards=" + compactAutoFlipBoardCards(out).size()
+                + " age_ms=" + Math.max(0L, System.currentTimeMillis() - autoFlipWarmBoardBuiltAtMs)
+                + " slots=" + filteredSlots
+                + " payload_hash=" + safe(autoFlipPayloadHash)
+        );
+
+        return out;
     }
 
     private void ensureAutoFlipPayloadFreshAsync()
@@ -12332,7 +12536,12 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 clearAutoFlipSkippedItemIds("optimize_board");
                 clearAutoFlipRetiredBoardSlots("optimize_board");
 
-                java.util.List<AutoFlipBoardCard> cards = buildAutoFlipBoardFromLocalPayload();
+                java.util.List<AutoFlipBoardCard> cards = getAutoFlipWarmBoardCardsForOptimize();
+                boolean usedWarmCache = cards != null && !compactAutoFlipBoardCards(cards).isEmpty();
+                if (!usedWarmCache)
+                {
+                    cards = buildAutoFlipBoardFromLocalPayload();
+                }
                 if (cards == null || cards.isEmpty())
                 {
                     logAutoFlipVerbose("AUTOFLIP_LOCAL_OPTIMIZE loaded=false cards=0");
@@ -12360,6 +12569,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 logAutoFlipVerbose(
                     "AUTOFLIP_LOCAL_OPTIMIZE"
                         + " loaded=true"
+                        + " used_warm_cache=" + usedWarmCache
                         + " cards=" + cards.size()
                         + " budget_planned_gp=" + getAutoFlipBoardBudgetPlannedGp()
                         + " expected_profit_gp=" + getAutoFlipBoardTotalExpectedProfitGp()
@@ -13050,6 +13260,13 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         if (cached != null)
         {
             return cached.booleanValue();
+        }
+
+        if (client != null && !client.isClientThread())
+        {
+            // The ranked payload already splits F2P vs members pools. Avoid calling
+            // ItemManager composition APIs from background warm/optimize workers.
+            return false;
         }
 
         try
