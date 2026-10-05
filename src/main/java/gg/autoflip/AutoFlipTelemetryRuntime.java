@@ -194,10 +194,6 @@ final class AutoFlipTelemetryRuntime
                     + "\"ts\":\"" + now() + "\"}"
             );
 
-            if (isVerboseLoggingEnabled())
-            {
-                System.out.println("AUTOFLIP_PI_SEND_COMPLETE batch=" + batch.size() + " acked_now=" + ackedNow);
-            }
         }
         catch (Exception e)
         {
@@ -209,10 +205,6 @@ final class AutoFlipTelemetryRuntime
                     + "\"ts\":\"" + now() + "\"}"
             );
 
-            if (isVerboseLoggingEnabled())
-            {
-                System.out.println("AUTOFLIP_PI_SEND_FAILED " + e.getClass().getSimpleName() + " " + e.getMessage());
-            }
         }
     }
 

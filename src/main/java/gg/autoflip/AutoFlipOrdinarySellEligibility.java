@@ -21,20 +21,6 @@ final class AutoFlipOrdinarySellEligibility
             && geHeaderText.startsWith("Grand Exchange")
             && (pricePromptOpen || geHeaderText.startsWith("Grand Exchange: Set up offer"));
 
-        if (verboseLogging)
-        {
-            System.out.println(
-                "AUTOFLIP_ORDINARY_SELL_VISIBILITY"
-                    + " item_id=" + itemId
-                    + " autoFlipInventoryItem=" + autoFlipInventoryItem
-                    + " apiPriceReady=" + apiPriceReady
-                    + " cachedSellPriceGp=" + cachedSellPriceGp
-                    + " geHeaderText=" + String.valueOf(geHeaderText)
-                    + " pricePromptOpen=" + pricePromptOpen
-                    + " visible=" + visible
-            );
-        }
-
         return visible;
     }
 

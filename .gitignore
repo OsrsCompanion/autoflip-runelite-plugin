@@ -8,6 +8,7 @@ _logs/
 _runtime/
 _icon_preview/
 PluginBakFiles/
+src/localDebug/
 PERFORMANCE_*.md
 *.bak
 *.bak_*

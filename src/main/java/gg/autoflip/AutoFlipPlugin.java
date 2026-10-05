@@ -112,9 +112,6 @@ private static final Path GE_TRADE_HISTORY = RUNTIME_DIR.resolve("ge_trade_histo
     private static final Path LOCAL_OVERLAY_DEV_CONFIG = Paths.get("_runtime", "overlay_dev_config.properties");
     private static final Path SENDER_LOG = RUNTIME_DIR.resolve("sender_log.jsonl");
     private static final Path ORDINARY_SELL_DEBUG_LOG = RUNTIME_DIR.resolve("ordinary_sell_debug.log");
-    private static final Path INJECTION_TRACE_LOG = RUNTIME_DIR.resolve("autoflip_injection_trace.log");
-    private static final Path TO_BUY_EDITOR_TRACE_LOG = RUNTIME_DIR.resolve("to_buy_editor_trace.log");
-    private static final boolean AUTOFLIP_TRACE_INJECTION = false;
     private static final boolean AUTOFLIP_VERBOSE_RUNTIME_LOGGING = false;
     private static final Path SLOT_INSTANCE_SEQ_FILE = RUNTIME_DIR.resolve("slot_instance_seq.txt");
     private static final Path SMART_SELL_SETTINGS_PATH = RUNTIME_DIR.resolve("smart_sell_settings.properties");
@@ -147,9 +144,7 @@ private final Set<String> seenEventIds = new HashSet<>();
 
     private ExecutorService senderExecutor = Executors.newSingleThreadExecutor();
     private ExecutorService pricePrefetchExecutor = Executors.newSingleThreadExecutor();
-    // AUTOFLIP_PATCH_ITEM_SEARCH_READY_GATE_SEQ_6SEC_V1
     private volatile long autoFlipGeSearchInjectSeq = 0L;
-    // AUTOFLIP_PATCH_DYNAMIC_SEARCH_CHATBOX_ANCHOR_V1
     private volatile int autoFlipItemSearchSeededItemId = 0;
     private volatile String autoFlipItemSearchSeededText = "";
     private volatile boolean sendInProgress = false;
@@ -178,7 +173,6 @@ private final Set<String> seenEventIds = new HashSet<>();
     private String lastWidgetBoundsFingerprint = "";
 
     private volatile boolean geWindowOpenForOverlay = false;
-    // AUTOFLIP_PATCH_SETUP_UI_BUTTON_CLICK_ONLY_V1
     private volatile Boolean autoFlipCustomSetupUiOverrideForOverlay = null;
     private volatile Rectangle geHeaderBoundsForOverlay = null;
     private volatile String geHeaderTextForOverlay = "";
@@ -195,8 +189,6 @@ private volatile boolean geHeaderFoundThisScan = false;
     private volatile int autoFlipMenuHoursAway = 6;
     private volatile long autoFlipMenuManualBudgetGp = 2000000L;
     private volatile boolean autoFlipMenuUseCashStack = true;
-
-    // AUTOFLIP_PATCH_E_CACHED_CASH_AND_REFRESH_CURSOR_V1
     // Worker threads must use cached cash observed by the UI/client path, not live client reads.
     private volatile long autoFlipLastObservedCashStackGp = 0L;
 
@@ -222,12 +214,10 @@ private volatile boolean geHeaderFoundThisScan = false;
     private final java.util.Set<Integer> autoFlipApiBuyPriceReadyItemIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final java.util.Set<Integer> autoFlipApiBuyPriceRequestItemIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final java.util.concurrent.ConcurrentHashMap<Integer, Long> autoFlipApiBuyPriceLoadedAtByItemId = new java.util.concurrent.ConcurrentHashMap<>();
-    private final java.util.concurrent.ConcurrentHashMap<Integer, String> autoFlipApiBuyPriceDebugByItemId = new java.util.concurrent.ConcurrentHashMap<>();
     // Transient coordination only; autoFlipSellPriceCacheByItemId remains the price-value authority.
     private final java.util.Set<Integer> autoFlipApiSellPriceReadyItemIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final java.util.concurrent.ConcurrentHashMap<Integer, Long> autoFlipApiSellPriceLoadedAtByItemId = new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.Set<Integer> autoFlipApiSellPriceRequestItemIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
-    private final java.util.concurrent.ConcurrentHashMap<Integer, String> autoFlipApiSellPriceDebugByItemId = new java.util.concurrent.ConcurrentHashMap<>();
     // Transient retry scheduling only; this map never stores or owns price values.
     private final java.util.concurrent.ConcurrentHashMap<Integer, Long> autoFlipApiSellPriceRetryAtByItemId = new java.util.concurrent.ConcurrentHashMap<>();
     // Transient display metadata captured on the client thread; never a price or item authority.
@@ -267,13 +257,9 @@ private volatile boolean geHeaderFoundThisScan = false;
     private final int[] autoFlipHeldBuyFilledBySlot = new int[8];
     private final long[] autoFlipHeldBuySpentBySlot = new long[8];
     private final int[] autoFlipHeldBuyInstanceSeqBySlot = new int[8];
-    private volatile String autoFlipMenuRiskMode = "adaptive";
-
-    // AUTOFLIP_PATCH_K_PRESS_FIRST_MENU_CLICK_V1
     // Some menu clicks are more reliable when handled on mousePressed.
     // This flag prevents the following mouseClicked from toggling/selecting twice.
     private volatile boolean autoFlipSuppressNextMenuClick = false;
-    private volatile boolean autoFlipRiskDropdownOpen = false;
 
     private volatile boolean autoFlipHoursDropdownOpen = false;
     private volatile boolean autoFlipBudgetInputActive = false;
@@ -321,8 +307,6 @@ private volatile boolean geHeaderFoundThisScan = false;
 
     @Inject
     private ItemManager itemManager;
-
-    // AUTOFLIP_PATCH_BANK_VIEW_BRIDGE_V3B
     @Inject
     private net.runelite.client.plugins.PluginManager autoFlipPluginManager;
 @Inject
@@ -2007,9 +1991,6 @@ tickCounter++;
 
         return "";
     }
-
-
-    // AUTOFLIP_PATCH_SETUP_COVER_CLICK_BLOCK_V2_METHOD
     private boolean shouldConsumeAutoFlipSetupCoverClick(int x, int y)
     {
         try
@@ -2071,8 +2052,6 @@ tickCounter++;
             return false;
         }
     }
-
-    // AUTOFLIP_PATCH_SETUP_COVER_CLICK_BLOCK_V2_METHOD
     private boolean pointInsideAutoFlipSetupRect(int x, int y, Rectangle header, String prefix, int defaultX, int defaultY, int defaultW, int defaultH)
     {
         if (header == null)
@@ -2089,8 +2068,6 @@ tickCounter++;
 
         return rect.contains(x, y);
     }
-
-    // AUTOFLIP_PATCH_SETUP_COVER_CLICK_BLOCK_V2_METHOD
     private int readAutoFlipSetupDevInt(String key, int fallback)
     {
         try
@@ -2121,7 +2098,6 @@ tickCounter++;
             return fallback;
         }
     }
-    // AUTOFLIP_PATCH_SETUP_COVER_CLICK_BLOCK_V2_METHOD_END
     @Override
     public MouseEvent mouseClicked(MouseEvent mouseEvent)
     {
@@ -2134,8 +2110,6 @@ tickCounter++;
                 autoFlipLastMouseX = mouseEvent.getX();
                 autoFlipLastMouseY = mouseEvent.getY();
                 rememberAutoFlipNativeButtonHoleSelection(mouseEvent.getX(), mouseEvent.getY());
-
-                // AUTOFLIP_PATCH_SETUP_COVER_CLICK_BLOCK_V2_CLICK
                 if (shouldConsumeAutoFlipSetupCoverClick(mouseEvent.getX(), mouseEvent.getY()))
                 {
                     mouseEvent.consume();
@@ -2153,7 +2127,6 @@ tickCounter++;
 
                 if (handleAutoFlipQuantityChatboxInjectClick(mouseEvent.getX(), mouseEvent.getY()))
                 {
-                    // AUTOFLIP_PATCH_O_QUANTITY_CHATBOX_CLICK_ROUTE_V1
                     logAutoFlipVerbose("AUTOFLIP_CLICK_ACTION_RESULT handled=true");
 
                     mouseEvent.consume();
@@ -2167,9 +2140,6 @@ tickCounter++;
                     mouseEvent.consume();
                     return mouseEvent;
                 }
-
-
-                // AUTOFLIP_PATCH_X2_BOARD_CLICK_MAIN_GE_ONLY_V1
                 // Quantity/price helper clicks are allowed above this point.
                 // Board/card ghost clicks are allowed only on the main GE board.
                 if (!isAutoFlipMainGeBoardScreen())
@@ -2218,8 +2188,6 @@ tickCounter++;
                 autoFlipLastMouseX = mouseEvent.getX();
                 autoFlipLastMouseY = mouseEvent.getY();
                 rememberAutoFlipNativeButtonHoleSelection(mouseEvent.getX(), mouseEvent.getY());
-
-                // AUTOFLIP_PATCH_SETUP_COVER_CLICK_BLOCK_V2_PRESS
                 if (shouldConsumeAutoFlipSetupCoverClick(mouseEvent.getX(), mouseEvent.getY()))
                 {
                     mouseEvent.consume();
@@ -2228,7 +2196,6 @@ tickCounter++;
                 boolean menuHandledOnPress = false;
                 try
                 {
-                    // AUTOFLIP_PATCH_K_PRESS_FIRST_MENU_CLICK_ROUTE_V1
                     // Handle dropdown/menu clicks on press so the first click opens/selects reliably.
                     menuHandledOnPress = handleAutoFlipMenuClick(mouseEvent.getX(), mouseEvent.getY());
                 }
@@ -2257,7 +2224,6 @@ tickCounter++;
                 Rectangle directQuantityChatboxPressBounds = getAutoFlipQuantityChatboxButtonBounds();
                 if (!consumed && directQuantityChatboxPressBounds != null && directQuantityChatboxPressBounds.contains(mouseEvent.getX(), mouseEvent.getY()))
                 {
-                    // AUTOFLIP_PATCH_O_QUANTITY_CHATBOX_PRESS_BLOCK_V1
                     consumed = true;
                     if (readBoolConfig("debug.mouse.logs.enabled", false)) { logAutoFlipVerbose("AUTOFLIP_QUANTITY_CHATBOX_PRESS_BLOCK x=" + mouseEvent.getX() + " y=" + mouseEvent.getY()); }
                 }
@@ -2274,7 +2240,6 @@ tickCounter++;
 
                 if (consumed)
                 {
-                    // AUTOFLIP_PATCH_X2_PRESS_MAIN_GE_ONLY_V1
                     if (!isAutoFlipMainGeBoardScreen())
                     {
                         return mouseEvent;
@@ -2304,8 +2269,6 @@ tickCounter++;
             {
                 autoFlipLastMouseX = mouseEvent.getX();
                 autoFlipLastMouseY = mouseEvent.getY();
-
-                // AUTOFLIP_PATCH_SETUP_COVER_CLICK_BLOCK_V2_RELEASE
                 if (shouldConsumeAutoFlipSetupCoverClick(mouseEvent.getX(), mouseEvent.getY()))
                 {
                     mouseEvent.consume();
@@ -3357,7 +3320,6 @@ int x = base.x + cardOffsetX;
         AutoFlipGeOfferSlotSnapshot snapshot = getAutoFlipGeOfferSlotSnapshot(slot);
         return snapshot.empty ? 0 : snapshot.totalQuantity;
     }
-    // AUTOFLIP_PATCH_SETUP_UI_BUTTON_CLICK_ONLY_V1
     public boolean isAutoFlipCustomSetupUiEnabledForOverlay()
     {
         Boolean override = autoFlipCustomSetupUiOverrideForOverlay;
@@ -3367,16 +3329,12 @@ int x = base.x + cardOffsetX;
         }
         return readIntConfig("setup.custom.ui.enabled", 1) != 0;
     }
-
-    // AUTOFLIP_PATCH_SETUP_UI_BUTTON_CLICK_ONLY_V1
     private void toggleAutoFlipCustomSetupUiEnabledForOverlay()
     {
         boolean next = !isAutoFlipCustomSetupUiEnabledForOverlay();
         autoFlipCustomSetupUiOverrideForOverlay = Boolean.valueOf(next);
         logAutoFlipVerbose("AUTOFLIP_SETUP_CUSTOM_UI_TOGGLE enabled=" + next);
     }
-
-    // AUTOFLIP_PATCH_SETUP_UI_BUTTON_CLICK_ONLY_V1
     private Rectangle getAutoFlipSetupUiButtonBoundsForOverlay()
     {
         if (!geWindowOpenForOverlay || !autoFlipOverlayActive || geHeaderBoundsForOverlay == null)
@@ -3406,7 +3364,6 @@ int x = base.x + cardOffsetX;
 
     private boolean isAutoFlipMainGeBoardScreen()
     {
-        // AUTOFLIP_PATCH_X1_MAIN_GE_ONLY_CLICK_GATE_V1
         String title = geHeaderTextForOverlay == null ? "" : cleanWidgetText(geHeaderTextForOverlay);
         return "Grand Exchange".equals(title) || title.startsWith("Grand Exchange (");
     }
@@ -3441,8 +3398,6 @@ int x = base.x + cardOffsetX;
     private final java.util.Set<Integer> autoFlipOrdinarySellSnapshotRequestItemIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private volatile String autoFlipStateDetectorActiveNativePromptTextCache = "";
     private volatile String autoFlipStateDetectorLabelCache = "";
-
-    // AUTOFLIP_PATCH_W3_PRICE_HELPER_SUPPRESS_STATE_V1
     private volatile int autoFlipLastInjectedPriceGp = 0;
     private volatile long autoFlipLastInjectedPriceAtMs = 0L;
     public void rememberAutoFlipButtonBounds(Rectangle bounds)
@@ -3514,52 +3469,6 @@ int x = base.x + cardOffsetX;
     public boolean isAutoFlipUseCurrentCashStack()
     {
         return autoFlipMenuUseCashStack;
-    }
-
-
-    public boolean isAutoFlipRiskDropdownOpen()
-    {
-        return autoFlipRiskDropdownOpen;
-    }
-
-    public int getAutoFlipHoveredRiskIndex()
-    {
-        if (!autoFlipRiskDropdownOpen || !autoFlipOverlayActive || geHeaderBoundsForOverlay == null)
-        {
-            return -1;
-        }
-
-        int menuX = geHeaderBoundsForOverlay.x + geHeaderBoundsForOverlay.width + readIntConfig("menu.offset.x", 18);
-        int menuY = geHeaderBoundsForOverlay.y + readIntConfig("menu.offset.y", -10);
-        int menuWidth = readIntConfig("menu.width", 304);
-        int fieldWidth = menuWidth - 40;
-
-        int hoursY = menuY + 112;
-        int budgetY = hoursY + 62;
-        int checkboxY = budgetY + 62;
-        int riskLabelY = checkboxY + 50;
-        int riskY = riskLabelY + 17;
-
-        int dropdownX = menuX + 20;
-        int dropdownY = riskY + 40;
-        int optionHeight = 31;
-        int dropdownHeight = optionHeight * 3;
-
-        if (autoFlipLastMouseX < dropdownX || autoFlipLastMouseX > dropdownX + fieldWidth)
-        {
-            return -1;
-        }
-
-        if (autoFlipLastMouseY < dropdownY || autoFlipLastMouseY > dropdownY + dropdownHeight)
-        {
-            return -1;
-        }
-
-        return Math.max(0, Math.min(2, (autoFlipLastMouseY - dropdownY) / optionHeight));
-    }
-    public String getAutoFlipRiskMode()
-    {
-        return autoFlipMenuRiskMode == null ? "adaptive" : autoFlipMenuRiskMode;
     }
 
 
@@ -3887,16 +3796,6 @@ int x = base.x + cardOffsetX;
             }
             requestAutoFlipApiSellPrice(guidanceItemId);
 
-            writeAutoFlipPostConfirmTrace(
-                "AUTOFLIP_POST_CONFIRM_TRACE"
-                    + " phase=sell_inventory_offer_memory"
-                    + " slot=" + guidance.getSlotIndex()
-                    + " item_id=" + guidanceItemId
-                    + " item_name=" + safe(resolvedName)
-                    + " sell_price=" + guidance.getSellPriceGp()
-                    + " inventory_qty=" + guidance.getInventoryQuantity()
-                    + " ordinary_sell_state=seeded"
-            );
             return;
         }
 
@@ -3939,14 +3838,6 @@ int x = base.x + cardOffsetX;
                 autoFlipSellPriceDebugItemNameById.put(canonicalItemId, autoFlipOrdinarySellSetupItemName);
             }
             requestAutoFlipApiSellPrice(canonicalItemId);
-            writeAutoFlipPostConfirmTrace(
-                "AUTOFLIP_POST_CONFIRM_TRACE"
-                    + " phase=ordinary_sell_inventory_offer_memory_fallback"
-                    + " item_id=" + canonicalItemId
-                    + " item_name=" + safe(resolvedName)
-                    + " cached_sell_price=" + getAutoFlipCachedSellPriceGp(canonicalItemId)
-                    + " inventory_qty=" + inventoryQuantity
-            );
         }
 
         if (!isAutoFlipInventoryItem(canonicalItemId))
@@ -3968,22 +3859,9 @@ int x = base.x + cardOffsetX;
             }
             autoFlipOrdinarySellSetupLastSeenMs = System.currentTimeMillis();
             requestAutoFlipApiSellPrice(canonicalItemId);
-            writeAutoFlipPostConfirmTrace(
-                "AUTOFLIP_POST_CONFIRM_TRACE"
-                    + " phase=ordinary_sell_inventory_offer_memory"
-                    + " item_id=" + canonicalItemId
-                    + " item_name=" + safe(autoFlipOrdinarySellSetupItemName)
-                    + " cached_sell_price=" + getAutoFlipCachedSellPriceGp(canonicalItemId)
-            );
             return;
         }
 
-        writeAutoFlipPostConfirmTrace(
-            "AUTOFLIP_POST_CONFIRM_TRACE"
-                + " phase=sell_inventory_offer_ignored"
-                + " item_id=" + canonicalItemId
-                + " item_name=" + safe(itemName)
-        );
     }
 
     private MenuEntry findAutoFlipInventoryMenuBase(MenuEntry[] entries, boolean requireInventoryWidget)
@@ -4720,47 +4598,16 @@ int x = base.x + cardOffsetX;
         return out.toString();
     }
 
-    public String getAutoFlipGeSessionInventoryCacheFullDiagnosticLog()
-    {
-        StringBuilder out = new StringBuilder(1024);
-        out.append("AUTOFLIP GE SESSION INVENTORY CACHE FULL DIAGNOSTIC\n");
-        out.append("schema=autoflip.ge_session_inventory_cache_diagnostic.v1\n");
-        out.append("generated_at=").append(java.time.Instant.now()).append('\n');
-        out.append("cache_active=").append(autoFlipGeSessionInventoryCacheActive).append('\n');
-        out.append("capture_pending=").append(autoFlipGeSessionInventoryCapturePending).append('\n');
-        out.append("captured_at_ms=").append(autoFlipGeSessionInventoryCapturedAtMs).append('\n');
-        out.append("ge_window_open=").append(geWindowOpenForOverlay).append('\n');
-        out.append("ge_header_text=").append(geHeaderTextForOverlay).append('\n');
-        out.append("unique_item_ids=")
-            .append(new java.util.TreeSet<>(autoFlipGeSessionInventoryQuantityByItemId.keySet()))
-            .append("\n\nTIME TO SELL CACHE CHECKS\n");
-        appendAutoFlipTimeToSellInventoryCacheChecks(out, "");
-        out.append("\nREADABLE CACHE VIEW\n").append(getAutoFlipGeSessionInventoryCachePseudoJson());
-        return out.toString();
-    }
-
     public String getAutoFlipMembersCurrentListPseudoJson()
     {
         fetchAutoFlipPayloadIfNeeded(false);
         return buildAutoFlipCurrentListPseudoJson(true);
     }
 
-    public String getAutoFlipMembersCurrentListFullDiagnosticLog()
-    {
-        fetchAutoFlipPayloadIfNeeded(false);
-        return buildAutoFlipCurrentListFullDiagnosticLog(true);
-    }
-
     public String getAutoFlipF2pCurrentListPseudoJson()
     {
         fetchAutoFlipPayloadIfNeeded(false);
         return buildAutoFlipCurrentListPseudoJson(false);
-    }
-
-    public String getAutoFlipF2pCurrentListFullDiagnosticLog()
-    {
-        fetchAutoFlipPayloadIfNeeded(false);
-        return buildAutoFlipCurrentListFullDiagnosticLog(false);
     }
 
     private String buildAutoFlipCurrentListPseudoJson(boolean membersOnly)
@@ -4849,109 +4696,6 @@ int x = base.x + cardOffsetX;
                 out.append("  ").append(decoratedName).append('\n');
             }
         }
-        return out.toString();
-    }
-
-    private String buildAutoFlipCurrentListFullDiagnosticLog(boolean membersOnly)
-    {
-        java.util.List<AutoFlipPayloadRow> rankedRows = localPayloadCurrentRankedUniverseRows(membersOnly);
-        java.util.List<AutoFlipPayloadRow> filteredRows = new java.util.ArrayList<>();
-        java.util.Map<Integer, Integer> displayedSlotByItemId = new java.util.TreeMap<>();
-        java.util.Set<Integer> recentSkipItemIds = new java.util.TreeSet<>();
-        java.util.Set<Integer> displayedItemIds = new java.util.TreeSet<>();
-        java.util.List<AutoFlipBoardCard> visibleCards = getAutoFlipVisibleBoardCardsSnapshot();
-
-        for (AutoFlipBoardCard card : visibleCards)
-        {
-            if (card == null || card.getItemId() <= 0)
-            {
-                continue;
-            }
-
-            int canonicalItemId = canonicalizeAutoFlipInventoryItemId(card.getItemId());
-            if (canonicalItemId <= 0 || isAutoFlipMembersOnlyItemCachedForDebug(canonicalItemId) != membersOnly)
-            {
-                continue;
-            }
-
-            displayedItemIds.add(canonicalItemId);
-            displayedSlotByItemId.putIfAbsent(canonicalItemId, Math.max(0, card.getSlotIndex()));
-        }
-
-        for (Integer itemId : getAutoFlipSkippedItemIdsSnapshot())
-        {
-            if (itemId == null || itemId <= 0)
-            {
-                continue;
-            }
-
-            int canonicalItemId = canonicalizeAutoFlipInventoryItemId(itemId);
-            if (canonicalItemId > 0 && isAutoFlipMembersOnlyItemCachedForDebug(canonicalItemId) == membersOnly)
-            {
-                recentSkipItemIds.add(canonicalItemId);
-            }
-        }
-
-        for (AutoFlipPayloadRow row : rankedRows)
-        {
-            if (row == null || row.itemId <= 0)
-            {
-                continue;
-            }
-
-            int canonicalItemId = canonicalizeAutoFlipInventoryItemId(row.itemId);
-            if (canonicalItemId <= 0 || isAutoFlipMembersOnlyItemCachedForDebug(canonicalItemId) != membersOnly)
-            {
-                continue;
-            }
-
-            filteredRows.add(row);
-        }
-
-        String listType = membersOnly ? "members" : "f2p";
-        String schema = membersOnly
-            ? "autoflip.current_members_list_diagnostic.v1"
-            : "autoflip.current_f2p_list_diagnostic.v1";
-
-        StringBuilder out = new StringBuilder(Math.max(1024, filteredRows.size() * 220));
-        out.append("AUTOFLIP CURRENT ").append(membersOnly ? "MEMBERS" : "F2P").append(" LIST FULL DIAGNOSTIC\n");
-        out.append("schema=").append(schema).append('\n');
-        out.append("generated_at=").append(java.time.Instant.now().toString()).append('\n');
-        out.append("list_type=").append(listType).append('\n');
-        out.append("hours_away=").append(autoFlipMenuHoursAway).append('\n');
-        out.append("budget_gp=").append(getAutoFlipEffectiveBudgetGp()).append('\n');
-        out.append("payload_generated_at=").append(autoFlipPayloadGeneratedAt).append('\n');
-        out.append("payload_hash=").append(autoFlipPayloadHash).append('\n');
-        out.append("payload_source_cache_builder=").append(autoFlipPayloadSourceCacheBuilder).append('\n');
-        out.append("payload_algorithm_version=").append(autoFlipPayloadAlgorithmVersion).append('\n');
-        out.append("payload_row_source=").append(membersOnly ? "slices" : "f2p_bundle").append('\n');
-        out.append("board_displayed_item_ids=").append(displayedItemIds).append('\n');
-        out.append("recent_skip_item_ids=").append(recentSkipItemIds).append('\n');
-        out.append("item_count=").append(filteredRows.size()).append("\n\nITEMS\n");
-
-        if (filteredRows.isEmpty())
-        {
-            out.append("(no ").append(listType).append(" ranked items)\n");
-        }
-        else
-        {
-            for (int i = 0; i < filteredRows.size(); i++)
-            {
-                AutoFlipPayloadRow row = filteredRows.get(i);
-                int canonicalItemId = canonicalizeAutoFlipInventoryItemId(row.itemId);
-                boolean skipped = recentSkipItemIds.contains(canonicalItemId);
-                boolean displayed = displayedItemIds.contains(canonicalItemId);
-                String markers = (skipped ? "*" : "") + (displayed ? "^" : "");
-                String decoratedName = (markers.isEmpty() ? "" : markers + " ") + safe(row.itemName);
-
-                out.append(decoratedName).append('\n');
-            }
-        }
-
-        out.append("\nBOARD SNAPSHOT\n");
-        out.append(describeAutoFlipBoardCards(visibleCards)).append('\n');
-        out.append("RECENT SKIP SNAPSHOT\n").append(recentSkipItemIds).append('\n');
-        out.append("READABLE CACHE VIEW\n").append(buildAutoFlipCurrentListPseudoJson(membersOnly));
         return out.toString();
     }
 
@@ -6335,37 +6079,6 @@ int x = base.x + cardOffsetX;
         return out.toString();
     }
 
-    public String getAutoFlipLiveBuyPriceCacheFullDiagnosticLog()
-    {
-        java.util.Set<Integer> ids = new java.util.TreeSet<>();
-        ids.addAll(autoFlipBuyPriceCacheByItemId.keySet());
-        ids.addAll(autoFlipApiBuyPriceRequestItemIds);
-        ids.addAll(autoFlipApiBuyPriceDebugByItemId.keySet());
-        StringBuilder out = new StringBuilder(Math.max(1024, ids.size() * 180));
-        out.append("AUTOFLIP BUY CACHE FULL DIAGNOSTIC\n");
-        out.append("schema=autoflip.buy_cache_diagnostic.v1\n");
-        out.append("generated_at=").append(java.time.Instant.now()).append('\n');
-        out.append("pi_base_url=").append(piBaseUrl).append('\n');
-        out.append("selected_ordinary_buy_item_id=").append(autoFlipOrdinaryBuySetupItemId).append('\n');
-        out.append("selected_ordinary_buy_item_name=").append(autoFlipOrdinaryBuySetupItemName).append('\n');
-        out.append("selected_cached_buy_price_gp=").append(getAutoFlipCachedBuyPriceGp(autoFlipOrdinaryBuySetupItemId)).append('\n');
-        out.append("current_buy_price_gp=").append(autoFlipOrdinaryBuyCurrentPriceGp).append('\n');
-        out.append("price_match=").append(autoFlipOrdinaryBuyCurrentPriceGp > 0 && autoFlipOrdinaryBuyCurrentPriceGp == getAutoFlipCachedBuyPriceGp(autoFlipOrdinaryBuySetupItemId)).append('\n');
-        out.append("cache_item_count=").append(autoFlipBuyPriceCacheByItemId.size()).append('\n');
-        out.append("api_ready_item_ids=").append(new java.util.TreeSet<>(autoFlipApiBuyPriceReadyItemIds)).append('\n');
-        out.append("api_in_flight_item_ids=").append(new java.util.TreeSet<>(autoFlipApiBuyPriceRequestItemIds)).append("\n\nITEM STATES\n");
-        for (Integer itemId : ids)
-        {
-            out.append("item_id=").append(itemId).append(" item_name=").append(resolveAutoFlipSellPriceDebugItemName(itemId));
-            out.append(" recommended_buy_gp=").append(getAutoFlipCachedBuyPriceGp(itemId));
-            out.append(" last_bought_gp=").append(autoFlipLastBoughtPriceByItemId.getOrDefault(itemId, 0L));
-            out.append(" last_bought_at_ms=").append(autoFlipLastBoughtAtMsByItemId.getOrDefault(itemId, 0L));
-            out.append(" fetch={").append(autoFlipApiBuyPriceDebugByItemId.getOrDefault(itemId, "state=not_recorded")).append("}\n");
-        }
-        out.append("\nREADABLE CACHE VIEW\n").append(getAutoFlipLiveBuyPriceCachePseudoJson());
-        return out.toString();
-    }
-
     public String getAutoFlipCurrentOffersPseudoJson()
     {
         if (client == null)
@@ -6617,64 +6330,6 @@ int x = base.x + cardOffsetX;
 
         task.run();
         return snapshots;
-    }
-
-    public String getAutoFlipLiveSellPriceCacheFullDiagnosticLog()
-    {
-        java.util.Set<Integer> allItemIds = new java.util.TreeSet<>();
-        allItemIds.addAll(autoFlipSellPriceCacheByItemId.keySet());
-        allItemIds.addAll(autoFlipApiSellPriceReadyItemIds);
-        allItemIds.addAll(autoFlipApiSellPriceRequestItemIds);
-        allItemIds.addAll(autoFlipApiSellPriceDebugByItemId.keySet());
-        allItemIds.addAll(autoFlipLastInventoryPriceCandidateIds);
-
-        StringBuilder out = new StringBuilder(Math.max(1024, allItemIds.size() * 180));
-        out.append("AUTOFLIP SELL CACHE FULL DIAGNOSTIC\n");
-        out.append("schema=autoflip.sell_cache_diagnostic.v1\n");
-        out.append("generated_at=").append(java.time.Instant.now().toString()).append('\n');
-        out.append("pi_base_url=").append(piBaseUrl).append('\n');
-        out.append("overlay_active=").append(autoFlipOverlayActive).append('\n');
-        out.append("ge_window_open=").append(geWindowOpenForOverlay).append('\n');
-        out.append("ge_header_text=").append(geHeaderTextForOverlay).append('\n');
-        out.append("last_inventory_scan_at_ms=").append(autoFlipLastInventoryPriceScanAtMs).append('\n');
-        out.append("last_inventory_candidate_ids=").append(autoFlipLastInventoryPriceCandidateIds).append('\n');
-        out.append("selected_ordinary_sell_item_id=").append(autoFlipOrdinarySellSetupItemId).append('\n');
-        out.append("selected_ordinary_sell_item_name=").append(autoFlipOrdinarySellSetupItemName).append('\n');
-        out.append("selected_ordinary_sell_last_seen_ms=").append(autoFlipOrdinarySellSetupLastSeenMs).append('\n');
-        out.append("selected_cached_sell_price_gp=").append(getAutoFlipCachedSellPriceGp(autoFlipOrdinarySellSetupItemId)).append('\n');
-        out.append("marker_visible=").append(isAutoFlipOrdinarySellPriceMarkerVisibleForOverlay()).append('\n');
-        out.append("last_native_prompt_text=").append(autoFlipOrdinarySellLastPromptText).append('\n');
-        out.append("price_option_visible=").append(autoFlipOrdinarySellPriceOptionVisible).append('\n');
-        out.append("price_option_gp=").append(autoFlipOrdinarySellPriceOptionGp).append('\n');
-        out.append("cache_item_count=").append(autoFlipSellPriceCacheByItemId.size()).append('\n');
-        out.append("api_ready_item_ids=").append(new java.util.TreeSet<>(autoFlipApiSellPriceReadyItemIds)).append('\n');
-        out.append("api_in_flight_item_ids=").append(new java.util.TreeSet<>(autoFlipApiSellPriceRequestItemIds)).append('\n');
-        out.append("api_retry_at_by_item_id=").append(new java.util.TreeMap<>(autoFlipApiSellPriceRetryAtByItemId)).append('\n');
-        out.append("\nITEM STATES\n");
-
-        if (allItemIds.isEmpty())
-        {
-            out.append("(no sell-cache item state)\n");
-        }
-        else
-        {
-            for (Integer itemIdValue : allItemIds)
-            {
-                int itemId = itemIdValue == null ? 0 : itemIdValue;
-                out.append("item_id=").append(itemId);
-                out.append(" item_name=").append(resolveAutoFlipSellPriceDebugItemName(itemId));
-                out.append(" sell_price_gp=").append(getAutoFlipCachedSellPriceGp(itemId));
-                out.append(" autoflip_inventory=").append(isAutoFlipInventoryItem(itemId));
-                out.append(" api_ready=").append(autoFlipApiSellPriceReadyItemIds.contains(itemId));
-                out.append(" api_in_flight=").append(autoFlipApiSellPriceRequestItemIds.contains(itemId));
-                out.append(" fetch={").append(autoFlipApiSellPriceDebugByItemId.getOrDefault(itemId, "state=not_recorded")).append("}");
-                out.append('\n');
-            }
-        }
-
-        out.append("\nREADABLE CACHE VIEW\n");
-        out.append(getAutoFlipLiveSellPriceCachePseudoJson());
-        return out.toString();
     }
 
     private java.util.Properties loadAutoFlipSmartSellSettingsForOverlay()
@@ -6997,7 +6652,7 @@ int x = base.x + cardOffsetX;
                 marketSellPriceGp,
                 readJsonLong(obj, "buy_time", 0L),
                 readJsonLong(obj, "sell_time", 0L)
-            ), System.currentTimeMillis(), "to_buy_refresh");
+            ));
 
             snapshots.put(itemId, new AutoFlipMarketSnapshot(
                 itemId,
@@ -7022,12 +6677,6 @@ int x = base.x + cardOffsetX;
 
         return snapshots;
     }
-
-
-    // AUTOFLIP_PATCH_BANK_TAG_EYE_CLEAN_V1
-
-    // AUTOFLIP_PATCH_INVENTORY_EYE_GLOW_V2
-    // AUTOFLIP_PATCH_BANK_OPEN_VISUAL_DIAG_V1
     private long autoFlipLastBankVisualLogMs = 0L;
 
     public boolean isAutoFlipBankOpenForSidePanel()
@@ -7117,8 +6766,6 @@ int x = base.x + cardOffsetX;
             }
         });
     }
-
-    // AUTOFLIP_PATCH_BANK_VIEW_BRIDGE_V3B
     private void openAutoFlipInventoryBankViewCleanOnClientThread()
     {
         final String tagName = "autoflip_inventory";
@@ -7256,8 +6903,6 @@ int x = base.x + cardOffsetX;
             logAutoFlipVerbose("AUTOFLIP_BANK_VIEW unavailable reason=bank_tag_reflection_failed detail=" + describeReflectionThrowable(reflectionError));
         }
     }
-
-    // AUTOFLIP_PATCH_BANK_VIEW_BRIDGE_V3B
     private Object findInventorySetupsPluginInstance()
     {
         if (autoFlipPluginManager == null)
@@ -7308,8 +6953,6 @@ int x = base.x + cardOffsetX;
             return null;
         }
     }
-
-    // AUTOFLIP_PATCH_BANK_VIEW_BRIDGE_V3B
     private Object readPrivateFieldByTypeName(Object source, String typeName)
     {
         if (source == null || typeName == null)
@@ -7341,8 +6984,6 @@ int x = base.x + cardOffsetX;
 
         return null;
     }
-
-    // AUTOFLIP_PATCH_BANK_VIEW_BRIDGE_V3B
     private Object invokeBankBridgeStep(String stepName, java.lang.reflect.Method method, Object target, Object... args) throws Throwable
     {
         try
@@ -7358,8 +6999,6 @@ int x = base.x + cardOffsetX;
             throw ite;
         }
     }
-
-    // AUTOFLIP_PATCH_BANK_VIEW_BRIDGE_V3B
     private String describeReflectionThrowable(Throwable error)
     {
         if (error == null)
@@ -8172,10 +7811,6 @@ int x = base.x + cardOffsetX;
                 continue;
             }
             requestedItemIds.add(itemId);
-            autoFlipApiSellPriceDebugByItemId.put(
-                itemId,
-                "state=queued requested_at_ms=" + System.currentTimeMillis()
-            );
         }
 
         if (requestedItemIds.isEmpty())
@@ -8186,7 +7821,6 @@ int x = base.x + cardOffsetX;
         ensurePricePrefetchExecutor();
         pricePrefetchExecutor.submit(() ->
         {
-            long requestedAtMs = System.currentTimeMillis();
             StringBuilder ids = new StringBuilder();
             for (Integer itemId : requestedItemIds)
             {
@@ -8199,13 +7833,6 @@ int x = base.x + cardOffsetX;
             String url = cleanBaseUrl(piBaseUrl) + "/market/explorer/prices?ids=" + ids + "&limit=" + requestedItemIds.size();
             try
             {
-                for (Integer itemId : requestedItemIds)
-                {
-                    autoFlipApiSellPriceDebugByItemId.put(
-                        itemId,
-                        "state=requesting_bulk requested_at_ms=" + requestedAtMs + " url=" + url
-                    );
-                }
                 String body = httpGetText(url, 5000);
                 java.util.Map<Integer, AutoFlipExplorerPriceParser.PricePoint> points = AutoFlipExplorerPriceParser.parsePricePoints(body);
                 boolean transportFailure = AutoFlipSellPriceRetryPolicy.isTransportFailure(body);
@@ -8220,15 +7847,6 @@ int x = base.x + cardOffsetX;
                         autoFlipApiSellPriceReadyItemIds.add(itemId);
                         autoFlipApiSellPriceLoadedAtByItemId.put(itemId, System.currentTimeMillis());
                         autoFlipApiSellPriceRetryAtByItemId.remove(itemId);
-                        autoFlipApiSellPriceDebugByItemId.put(
-                            itemId,
-                            "state=loaded_bulk requested_at_ms=" + requestedAtMs
-                                + " completed_at_ms=" + System.currentTimeMillis()
-                                + " response_bytes=" + (body == null ? 0 : body.length())
-                                + " sell_price_gp=" + sellPriceGp
-                                + " batch_item_count=" + requestedItemIds.size()
-                                + " url=" + url
-                        );
                         logAutoFlipVerbose(
                             "AUTOFLIP_INVENTORY_PRICE_PREFETCH loaded=true"
                                 + " item_id=" + itemId
@@ -8253,17 +7871,6 @@ int x = base.x + cardOffsetX;
                             autoFlipApiSellPriceLoadedAtByItemId.put(itemId, System.currentTimeMillis());
                         }
                     }
-                    autoFlipApiSellPriceDebugByItemId.put(
-                        itemId,
-                        "state=" + (transportFailure ? "transport_retry_wait" : "no_price")
-                            + " requested_at_ms=" + requestedAtMs
-                            + " completed_at_ms=" + System.currentTimeMillis()
-                            + " response_bytes=" + (body == null ? 0 : body.length())
-                            + (transportFailure
-                                ? " retry_at_ms=" + autoFlipApiSellPriceRetryAtByItemId.get(itemId)
-                                : "")
-                            + " url=" + url
-                    );
                     logAutoFlipVerbose(
                         "AUTOFLIP_INVENTORY_PRICE_PREFETCH loaded=false"
                             + " item_id=" + itemId
@@ -8279,12 +7886,6 @@ int x = base.x + cardOffsetX;
                     autoFlipApiSellPriceRetryAtByItemId.put(
                         itemId,
                         System.currentTimeMillis() + AutoFlipSellPriceRetryPolicy.TRANSPORT_RETRY_DELAY_MS
-                    );
-                    autoFlipApiSellPriceDebugByItemId.put(
-                        itemId,
-                        "state=error_bulk completed_at_ms=" + System.currentTimeMillis()
-                            + " error=" + error.getClass().getSimpleName()
-                            + " message=" + safe(error.getMessage())
                     );
                 }
                 logAutoFlipUiError("requestAutoFlipApiSellPrices", error);
@@ -8310,14 +7911,12 @@ int x = base.x + cardOffsetX;
             autoFlipAuthorizedBuyPriceItemIds.add(itemId);
             if (isAutoFlipApiBuyPriceFresh(itemId, nowMs) || !autoFlipApiBuyPriceRequestItemIds.add(itemId)) continue;
             requested.add(itemId);
-            autoFlipApiBuyPriceDebugByItemId.put(itemId, "state=queued priority=ranked_or_to_buy requested_at_ms=" + nowMs);
         }
         if (requested.isEmpty()) return;
 
         ensurePricePrefetchExecutor();
         pricePrefetchExecutor.submit(() ->
         {
-            long requestedAtMs = System.currentTimeMillis();
             StringBuilder ids = new StringBuilder();
             for (Integer itemId : requested)
             {
@@ -8335,18 +7934,13 @@ int x = base.x + cardOffsetX;
                     captureAutoFlipPricePointItemName(itemId, point);
                     if (point != null && point.suggestedBuyPrice > 0L)
                     {
-                        primeAutoFlipBuyPriceCache(itemId, point, requestedAtMs, "buy_priority_bulk");
+                        primeAutoFlipBuyPriceCache(itemId, point);
                         if (point.suggestedSellPrice > 0L) primeAutoFlipSellPriceCache(itemId, point.suggestedSellPrice);
-                    }
-                    else
-                    {
-                        autoFlipApiBuyPriceDebugByItemId.put(itemId, "state=no_price completed_at_ms=" + System.currentTimeMillis() + " url=" + url);
                     }
                 }
             }
             catch (Throwable error)
             {
-                for (Integer itemId : requested) autoFlipApiBuyPriceDebugByItemId.put(itemId, "state=error message=" + safe(error.getMessage()));
                 logAutoFlipUiError("requestAutoFlipApiBuyPrices", error);
             }
             finally
@@ -8368,11 +7962,10 @@ int x = base.x + cardOffsetX;
             autoFlipLastBoughtAtMsByItemId.remove(itemId);
             autoFlipApiBuyPriceReadyItemIds.remove(itemId);
             autoFlipApiBuyPriceLoadedAtByItemId.remove(itemId);
-            autoFlipApiBuyPriceDebugByItemId.remove(itemId);
         }
     }
 
-    private void primeAutoFlipBuyPriceCache(int itemId, AutoFlipExplorerPriceParser.PricePoint point, long requestedAtMs, String source)
+    private void primeAutoFlipBuyPriceCache(int itemId, AutoFlipExplorerPriceParser.PricePoint point)
     {
         if (itemId <= 0 || point == null || point.suggestedBuyPrice <= 0L) return;
         captureAutoFlipPricePointItemName(itemId, point);
@@ -8382,10 +7975,6 @@ int x = base.x + cardOffsetX;
         if (point.buyTimeSeconds > 0L) autoFlipLastBoughtAtMsByItemId.put(itemId, point.buyTimeSeconds * 1000L);
         autoFlipApiBuyPriceReadyItemIds.add(itemId);
         autoFlipApiBuyPriceLoadedAtByItemId.put(itemId, completedAtMs);
-        autoFlipApiBuyPriceDebugByItemId.put(itemId,
-            "state=loaded source=" + source + " requested_at_ms=" + requestedAtMs + " completed_at_ms=" + completedAtMs
-                + " buy_price_gp=" + point.suggestedBuyPrice + " last_bought_gp=" + point.latestBuyPrice
-                + " last_bought_at_ms=" + (point.buyTimeSeconds * 1000L));
     }
 
     private void captureAutoFlipPricePointItemName(int itemId, AutoFlipExplorerPriceParser.PricePoint point)
@@ -8562,7 +8151,6 @@ int x = base.x + cardOffsetX;
             }
 
             Rectangle logoBounds = autoFlipButtonBounds;
-                        // AUTOFLIP_PATCH_SETUP_UI_BUTTON_CLICK_ROUTE_V1
             Rectangle setupUiButtonBounds = getAutoFlipSetupUiButtonBoundsForOverlay();
             if (setupUiButtonBounds != null && setupUiButtonBounds.contains(mouseX, mouseY))
             {
@@ -8576,7 +8164,6 @@ int x = base.x + cardOffsetX;
                 setAutoFlipOverlayActive(nextActive);
 
                 autoFlipHoursDropdownOpen = false;
-                autoFlipRiskDropdownOpen = false;
                 autoFlipBudgetInputActive = false;
                 autoFlipHoursInputActive = false;
 
@@ -8624,27 +8211,17 @@ int x = base.x + cardOffsetX;
             {
                 commitAutoFlipTextInputs();
                 autoFlipHoursDropdownOpen = false;
-                autoFlipRiskDropdownOpen = false;
                 return false;
             }
 
             int hoursY = menuY + 112;
             int budgetY = hoursY + 62;
             int checkboxY = budgetY + 62;
-            int riskLabelY = checkboxY + 50;
-            int riskY = riskLabelY + 17;
-            int optimizeY = riskY + 54;
 
             Rectangle hoursRect = new Rectangle(menuX + 20, hoursY, fieldWidth, 30);
             Rectangle hoursDropdownRect = new Rectangle(menuX + 20, hoursY + 33, fieldWidth, 248);
             Rectangle budgetRect = new Rectangle(menuX + 20, budgetY, fieldWidth, 30);
             Rectangle checkboxRect = new Rectangle(menuX + 20, checkboxY - 7, fieldWidth, 28);
-            Rectangle riskHeaderRect = new Rectangle(menuX + 20, riskY, fieldWidth, 40);
-            Rectangle riskDropdownRect = new Rectangle(menuX + 20, riskY + 40, fieldWidth, 93);
-            Rectangle safeRect = new Rectangle(menuX + 20, riskY + 40, fieldWidth, 31);
-            Rectangle balancedRect = new Rectangle(menuX + 20, riskY + 71, fieldWidth, 31);
-            Rectangle riskRect = new Rectangle(menuX + 20, riskY + 102, fieldWidth, 31);
-            Rectangle optimizeRect = new Rectangle(menuX + 20, optimizeY, fieldWidth, 46);
 
             if (autoFlipHoursDropdownOpen && hoursDropdownRect.contains(mouseX, mouseY))
             {
@@ -8670,41 +8247,10 @@ int x = base.x + cardOffsetX;
                 return true;
             }
 
-            if (autoFlipRiskDropdownOpen && riskDropdownRect.contains(mouseX, mouseY))
-            {
-                if (safeRect.contains(mouseX, mouseY))
-                {
-                    autoFlipMenuRiskMode = "optimize";
-                    autoFlipRiskDropdownOpen = false;
-                    persistAutoFlipMenuState();
-                    logAutoFlipMenuEvent("strategy_optimize");
-                    return true;
-                }
-
-                if (balancedRect.contains(mouseX, mouseY))
-                {
-                    autoFlipMenuRiskMode = "adaptive";
-                    autoFlipRiskDropdownOpen = false;
-                    persistAutoFlipMenuState();
-                    logAutoFlipMenuEvent("strategy_adaptive");
-                    return true;
-                }
-
-                if (riskRect.contains(mouseX, mouseY))
-                {
-                    autoFlipMenuRiskMode = "exploratory";
-                    autoFlipRiskDropdownOpen = false;
-                    persistAutoFlipMenuState();
-                    logAutoFlipMenuEvent("strategy_exploratory");
-                    return true;
-                }
-            }
-
             if (hoursRect.contains(mouseX, mouseY))
             {
                 commitAutoFlipTextInputs();
                 autoFlipBudgetInputActive = false;
-                autoFlipRiskDropdownOpen = false;
                 autoFlipHoursDropdownOpen = true;
                 autoFlipHoursInputActive = true;
                 autoFlipHoursInputBuffer = "";
@@ -8715,7 +8261,6 @@ int x = base.x + cardOffsetX;
             if (budgetRect.contains(mouseX, mouseY))
             {
                 autoFlipHoursDropdownOpen = false;
-                autoFlipRiskDropdownOpen = false;
                 autoFlipHoursInputActive = false;
                 autoFlipMenuUseCashStack = false;
                 autoFlipBudgetInputActive = true;
@@ -8739,20 +8284,6 @@ int x = base.x + cardOffsetX;
                 autoFlipHoursDropdownOpen = false;
             }
 
-            if (riskHeaderRect.contains(mouseX, mouseY))
-            {
-                autoFlipHoursDropdownOpen = false;
-                autoFlipBudgetInputActive = false;
-                autoFlipRiskDropdownOpen = !autoFlipRiskDropdownOpen;
-                logAutoFlipMenuEvent(autoFlipRiskDropdownOpen ? "strategy_dropdown_opened" : "strategy_dropdown_closed");
-                return true;
-            }
-
-            if (autoFlipRiskDropdownOpen && !riskDropdownRect.contains(mouseX, mouseY))
-            {
-                autoFlipRiskDropdownOpen = false;
-            }
-
             if (checkboxRect.contains(mouseX, mouseY))
             {
                 autoFlipBudgetInputActive = false;
@@ -8765,15 +8296,6 @@ int x = base.x + cardOffsetX;
 
                 persistAutoFlipMenuState();
                 logAutoFlipMenuEvent("use_cash_toggled");
-                return true;
-            }
-
-            if (optimizeRect.contains(mouseX, mouseY))
-            {
-                commitAutoFlipTextInputs();
-                persistAutoFlipMenuState();
-                logAutoFlipMenuEvent("optimize_board_clicked");
-                triggerAutoFlipOptimizeBoard();
                 return true;
             }
 
@@ -9131,18 +8653,6 @@ int x = base.x + cardOffsetX;
         return fallback;
     }
 
-    public void openAutoFlipSidePanelOptimizeBoard()
-    {
-        triggerAutoFlipOptimizeBoard();
-        notifyAutoFlipSidePanelRefresh();
-    }
-
-    public void openAutoFlipSidePanelRefreshBoard()
-    {
-        triggerAutoFlipRefreshBoard();
-        notifyAutoFlipSidePanelRefresh();
-    }
-
     private void notifyAutoFlipSidePanelRefresh()
     {
         AutoFlipSidePanel panel = autoFlipSidePanel;
@@ -9225,11 +8735,6 @@ int x = base.x + cardOffsetX;
         autoFlipMenuUseCashStack = readBoolConfig("menu.use.current.cash", autoFlipMenuUseCashStack);
         autoFlipMenuManualBudgetGp = readLongProperty(props, "menu.manual.budget.gp", autoFlipMenuManualBudgetGp);
 
-        String risk = props.getProperty("menu.risk.mode");
-        if (risk != null)
-        {
-            autoFlipMenuRiskMode = normalizeAutoFlipRisk(risk);
-        }
     }
 
     private void persistAutoFlipMenuState()
@@ -9237,7 +8742,6 @@ int x = base.x + cardOffsetX;
         updateOverlayConfig("menu.hours.away", String.valueOf(autoFlipMenuHoursAway));
         updateOverlayConfig("menu.manual.budget.gp", String.valueOf(autoFlipMenuManualBudgetGp));
         updateOverlayConfig("menu.use.current.cash", String.valueOf(autoFlipMenuUseCashStack));
-        updateOverlayConfig("menu.risk.mode", normalizeAutoFlipRisk(autoFlipMenuRiskMode));
     }
 
     private int clampMenuHours(int value)
@@ -9256,55 +8760,6 @@ int x = base.x + cardOffsetX;
         {
             return fallback;
         }
-    }
-
-    private String normalizeAutoFlipRisk(String raw)
-    {
-        if (raw == null)
-        {
-            return "adaptive";
-        }
-
-        String value = raw.trim().toLowerCase(java.util.Locale.ROOT);
-
-        if ("optimize".equals(value) || "adaptive".equals(value) || "exploratory".equals(value))
-        {
-            return value;
-        }
-
-        if ("safe".equals(value))
-        {
-            return "optimize";
-        }
-
-        if ("balanced".equals(value))
-        {
-            return "adaptive";
-        }
-
-        if ("risk".equals(value))
-        {
-            return "exploratory";
-        }
-
-        return "adaptive";
-    }
-
-    private String toLegacyAutoFlipRiskLevel(String strategy)
-    {
-        String value = normalizeAutoFlipRisk(strategy);
-
-        if ("optimize".equals(value))
-        {
-            return "safe";
-        }
-
-        if ("exploratory".equals(value))
-        {
-            return "risk";
-        }
-
-        return "balanced";
     }
 
     private String formatGp(long value)
@@ -9344,7 +8799,6 @@ int x = base.x + cardOffsetX;
                 + "\"use_cash\":" + autoFlipMenuUseCashStack + ","
                 + "\"cash_gp\":" + getCurrentCashStackGp() + ","
                 + "\"manual_budget_gp\":" + autoFlipMenuManualBudgetGp + ","
-                + "\"risk\":\"" + safe(autoFlipMenuRiskMode) + "\","
                 + "\"ts\":\"" + now() + "\""
                 + "}"
         );
@@ -9482,7 +8936,7 @@ int x = base.x + cardOffsetX;
             return;
         }
 
-        if (!widget.isHidden() && (isGeRelevantWidget(widget) || widget.getItemId() > 0)) // AUTOFLIP_PATCH_GE_WIDGET_ITEM_ID_FILTER_V9
+        if (!widget.isHidden() && (isGeRelevantWidget(widget) || widget.getItemId() > 0))
         {
             Rectangle bounds = widget.getBounds();
             String text = widget.getText();
@@ -9544,7 +8998,6 @@ int x = base.x + cardOffsetX;
 
             matches
                 .append(",text=").append(cleanWidgetText(text))
-                // AUTOFLIP_PATCH_GE_WIDGET_ITEM_ID_PROBE_V5
                 .append(",itemId=").append(widget.getItemId())
                 .append(",itemQty=").append(widget.getItemQuantity())
                 .append(",name=").append(cleanWidgetText(name));
@@ -11012,33 +10465,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         }
     }
 
-    private void appendInjectionTrace(String phase, String source, String details)
-    {
-        if (!AUTOFLIP_TRACE_INJECTION)
-        {
-            return;
-        }
-
-        appendLine(
-            INJECTION_TRACE_LOG,
-            now()
-                + " phase=" + safe(phase)
-                + " source=" + safe(source)
-                + " details=" + safe(details)
-        );
-    }
-
-    public void logToBuyEditorTrace(String phase, int itemId, String details)
-    {
-        appendLine(
-            TO_BUY_EDITOR_TRACE_LOG,
-            now()
-                + " phase=" + safe(phase)
-                + " item_id=" + itemId
-                + " details=" + safe(details)
-        );
-    }
-
     private static String now()
     {
         return Instant.now().toString();
@@ -11360,8 +10786,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         return "payload=" + safe(payloadKey)
             + "|f2p=" + freeToPlay
             + "|hours=" + hours
-            + "|budget_band=" + safe(budgetBand)
-            + "|strategy=" + safe(normalizeAutoFlipRisk(autoFlipMenuRiskMode));
+            + "|budget_band=" + safe(budgetBand);
     }
 
     private void ensureAutoFlipBoardWarmAsync(String reason)
@@ -11421,67 +10846,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         worker.start();
     }
 
-    private java.util.List<AutoFlipBoardCard> getAutoFlipWarmBoardCardsForOptimize()
-    {
-        if (!isAutoFlipWarmBoardCacheFresh())
-        {
-            return java.util.Collections.emptyList();
-        }
-
-        java.util.List<AutoFlipBoardCard> warmCards = compactAutoFlipBoardCards(autoFlipWarmBoardCards);
-        if (warmCards.isEmpty())
-        {
-            return java.util.Collections.emptyList();
-        }
-
-        java.util.List<Integer> availableSlots = new java.util.ArrayList<>(getAutoFlipAvailableGeSlotIndicesForOverlay());
-        java.util.List<Integer> filteredSlots = new java.util.ArrayList<>();
-        for (Integer slot : availableSlots)
-        {
-            if (slot != null && !isAutoFlipBoardSlotRetired(slot))
-            {
-                filteredSlots.add(slot);
-            }
-        }
-
-        if (filteredSlots.isEmpty())
-        {
-            return java.util.Collections.emptyList();
-        }
-
-        java.util.List<AutoFlipBoardCard> out = new java.util.ArrayList<>(java.util.Collections.nCopies(8, null));
-        int slotIndex = 0;
-        for (AutoFlipBoardCard card : warmCards)
-        {
-            if (card == null || card.getItemId() <= 0)
-            {
-                continue;
-            }
-
-            if (slotIndex >= filteredSlots.size())
-            {
-                break;
-            }
-
-            int slot = filteredSlots.get(slotIndex);
-            if (slot >= 0 && slot < out.size())
-            {
-                out.set(slot, copyAutoFlipBoardCardForSlot(card, slot));
-                slotIndex++;
-            }
-        }
-
-        logAutoFlipVerbose(
-            "AUTOFLIP_BOARD_WARM_USE"
-                + " cards=" + compactAutoFlipBoardCards(out).size()
-                + " age_ms=" + Math.max(0L, System.currentTimeMillis() - autoFlipWarmBoardBuiltAtMs)
-                + " slots=" + filteredSlots
-                + " payload_hash=" + safe(autoFlipPayloadHash)
-        );
-
-        return out;
-    }
-
     private void ensureAutoFlipPayloadFreshAsync()
     {
         if (autoFlipPayloadFetchInFlight || isAutoFlipPayloadFresh())
@@ -11510,9 +10874,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         worker.setDaemon(true);
         worker.start();
     }
-
-
-    // AUTOFLIP_PATCH_AR1_PAYLOAD_SSL_FALLBACK_V1
     // Narrow fallback for Java runtimes that cannot validate autoflip.gg cert chain.
     // Applies only to AutoFlip payload/ranked-pool fetch connections.
     private static volatile javax.net.ssl.SSLSocketFactory autoFlipPayloadSslFallbackFactory = null;
@@ -11776,7 +11137,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
     private String buildAutoFlipRankedPoolUrl(int limit)
     {
-        String strategy = normalizeAutoFlipRisk(autoFlipMenuRiskMode);
         long cash = getCurrentCashStackGp();
         long budget = autoFlipMenuUseCashStack ? cash : autoFlipMenuManualBudgetGp;
 
@@ -11788,8 +11148,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         int slots = getAutoFlipRankedPoolRequestedSlots();
 
         return AUTOFLIP_RELEASE_RANKED_POOL_ENDPOINT
-            + "?strategy_mode=" + queryParam(strategy)
-            + "&hours_away=" + queryParam(String.valueOf(Math.max(1, autoFlipMenuHoursAway)))
+            + "?hours_away=" + queryParam(String.valueOf(Math.max(1, autoFlipMenuHoursAway)))
             + "&budget_gp=" + queryParam(String.valueOf(Math.max(1L, budget)))
             + "&slots=" + queryParam(String.valueOf(slots))
             + "&preference_profile=" + queryParam("balanced")
@@ -12284,7 +11643,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
     public java.util.List<Integer> getAutoFlipAvailableGeSlotIndicesForOverlay()
     {
-        // AUTOFLIP_PATCH_M_WRITEONLY_AVAILABLE_SLOTS_V1
         boolean freeToPlay = isAutoFlipFreeToPlayAccount();
         int slotCount = getAutoFlipUsableGeSlotCountForCurrentAccount(freeToPlay);
         java.util.List<Integer> available = new java.util.ArrayList<>(slotCount);
@@ -12354,7 +11712,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
     {
         try
         {
-            // AUTOFLIP_PATCH_P1_QUIET_BUDGET_LINE_V1
             // Summary bar calls this every frame. Do not call getAutoFlipEffectiveBudgetGp()
             // because that method logs AUTOFLIP_EFFECTIVE_BUDGET diagnostics.
             long cachedCash = autoFlipLastObservedCashStackGp;
@@ -12383,49 +11740,28 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
     }
     private void triggerAutoFlipRefreshBoard()
     {
-        // AUTOFLIP_LOCAL_REFRESH_BOARD_SKIP_SIMULATION_V4
-        // Refresh Board should behave like clicking every visible Skip button once,
-        // and then rebuild the whole board from the updated skip set so the budget
-        // pass is recalculated across all visible recommendations.
         Thread worker = new Thread(() ->
         {
-            autoFlipBoardMutationLock.lock();
             try
             {
-                if (!fetchAutoFlipPayloadIfNeeded(false))
-                {
-                    logAutoFlipVerbose("AUTOFLIP_LOCAL_REFRESH_BOARD loaded=false reason=payload_unavailable");
-                    return;
-                }
-
                 java.util.List<AutoFlipBoardCard> visibleCards = getAutoFlipVisibleBoardCardsSnapshot();
+                int skipped = 0;
                 for (AutoFlipBoardCard card : visibleCards)
                 {
                     if (card != null && card.getItemId() > 0)
                     {
-                        rememberAutoFlipSkippedItem(card.getItemId());
+                        performAutoFlipSkipItemRefreshNow(card.getSlotIndex(), card.getItemId(), "refresh_board");
+                        skipped++;
                     }
                 }
 
-                java.util.List<AutoFlipBoardCard> cards = buildAutoFlipBoardFromLocalPayload();
-                if (cards == null || cards.isEmpty())
-                {
-                    logAutoFlipVerbose("AUTOFLIP_LOCAL_REFRESH_BOARD loaded=false cards=0");
-                    return;
-                }
-
-                clearAutoFlipCardActionBounds();
-                clearAutoFlipCardBlockBounds();
-                cards = filterAutoFlipBoardCardsForAvailableSlots(cards, "refresh_board");
-                cards = localPayloadRescaleBoardCards(cards, getAutoFlipEffectiveBudgetGp());
-                autoFlipBoardCards = snapshotAutoFlipBoardCards(cards);
-                captureAutoFlipCanonicalBoardCards(cards, "refresh_board");
                 notifyAutoFlipSidePanelRefresh();
 
                 logAutoFlipVerbose(
                     "AUTOFLIP_LOCAL_REFRESH_BOARD"
                         + " loaded=true"
-                        + " cards=" + cards.size()
+                        + " simulated_skip_count=" + skipped
+                        + " cards=" + getAutoFlipVisibleBoardCardsSnapshot().size()
                         + " budget_planned_gp=" + getAutoFlipBoardBudgetPlannedGp()
                         + " expected_profit_gp=" + getAutoFlipBoardTotalExpectedProfitGp()
                 );
@@ -12433,10 +11769,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             catch (Throwable error)
             {
                 logAutoFlipUiError("local_refresh_board", error);
-            }
-            finally
-            {
-                autoFlipBoardMutationLock.unlock();
             }
         }, "autoflip-local-refresh-board");
 
@@ -12505,95 +11837,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             autoFlipBoardMutationLock.unlock();
         }
     }
-    private void triggerAutoFlipOptimizeBoard()
-    {
-        // AUTOFLIP_LOCAL_OPTIMIZE_BOARD_FROM_PAYLOAD_V1
-        // Optimize uses the cached plugin_ranked_pool_payload locally.
-        // It does not call /api/plugin/ranked-pool unless payload cache is missing/stale and must be refreshed.
-        synchronized (this)
-        {
-            if (autoFlipOptimizeBoardInProgress)
-            {
-                logAutoFlipVerbose("AUTOFLIP_LOCAL_OPTIMIZE skipped=busy");
-                return;
-            }
-            autoFlipOptimizeBoardInProgress = true;
-        }
-
-        Thread worker = new Thread(() ->
-        {
-            autoFlipBoardMutationLock.lock();
-            try
-            {
-                pollGrandExchangeOffers();
-
-                if (!fetchAutoFlipPayloadIfNeeded(false))
-                {
-                    logAutoFlipVerbose("AUTOFLIP_LOCAL_OPTIMIZE loaded=false reason=payload_unavailable");
-                    return;
-                }
-
-                clearAutoFlipSkippedItemIds("optimize_board");
-                clearAutoFlipRetiredBoardSlots("optimize_board");
-
-                java.util.List<AutoFlipBoardCard> cards = getAutoFlipWarmBoardCardsForOptimize();
-                boolean usedWarmCache = cards != null && !compactAutoFlipBoardCards(cards).isEmpty();
-                if (!usedWarmCache)
-                {
-                    cards = buildAutoFlipBoardFromLocalPayload();
-                }
-                if (cards == null || cards.isEmpty())
-                {
-                    logAutoFlipVerbose("AUTOFLIP_LOCAL_OPTIMIZE loaded=false cards=0");
-                    return;
-                }
-
-                clearAutoFlipCardActionBounds();
-                clearAutoFlipCardBlockBounds();
-                cards = filterAutoFlipBoardCardsForAvailableSlots(cards, "optimize_board");
-                cards = localPayloadRescaleBoardCards(cards, getAutoFlipEffectiveBudgetGp());
-                captureAutoFlipCanonicalBoardCards(cards, "optimize_board");
-                autoFlipBoardCards = snapshotAutoFlipBoardCards(cards);
-                synchronized (this)
-                {
-                    for (AutoFlipBoardCard card : cards)
-                    {
-                        if (card != null && card.getItemId() > 0)
-                        {
-                            rememberAutoFlipSkippedItem(card.getItemId());
-                        }
-                    }
-                }
-                notifyAutoFlipSidePanelRefresh();
-
-                logAutoFlipVerbose(
-                    "AUTOFLIP_LOCAL_OPTIMIZE"
-                        + " loaded=true"
-                        + " used_warm_cache=" + usedWarmCache
-                        + " cards=" + cards.size()
-                        + " budget_planned_gp=" + getAutoFlipBoardBudgetPlannedGp()
-                        + " expected_profit_gp=" + getAutoFlipBoardTotalExpectedProfitGp()
-                        + " generated_at=" + safe(autoFlipPayloadGeneratedAt)
-                        + " payload_hash=" + safe(autoFlipPayloadHash)
-                );
-            }
-            catch (Throwable error)
-            {
-                logAutoFlipUiError("local_optimize_board", error);
-            }
-            finally
-            {
-                autoFlipOptimizeBoardInProgress = false;
-                autoFlipBoardMutationLock.unlock();
-            }
-        }, "autoflip-local-optimize-board");
-
-        worker.setDaemon(true);
-        worker.start();
-
-        logAutoFlipMenuEvent("optimize_board_local_payload");
-    }
-
     private void triggerAutoFlipRefreshItem(int slotIndex, int itemId)
     {
         // AUTOFLIP_LOCAL_REFRESH_ITEM_FROM_PAYLOAD_V1
@@ -12696,7 +11939,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
             if (isAutoFlipBoardSlotRetired(slot))
             {
-                logAutoFlipVerbose("AUTOFLIP_BOARD_SLOT_RETIRED_SKIP slot=" + slot + " reason=retired_until_optimize");
+                logAutoFlipVerbose("AUTOFLIP_BOARD_SLOT_RETIRED_SKIP slot=" + slot + " reason=retired_until_refresh");
                 continue;
             }
 
@@ -12717,6 +11960,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         java.util.Set<Integer> priorityItemIds = new java.util.HashSet<>();
         java.util.Set<Integer> reservedSlots = new java.util.HashSet<>();
         long toBuyReservedCapitalGp = 0L;
+        java.util.List<AutoFlipPayloadRow> universeRows = localPayloadCurrentRankedUniverseRows();
         java.util.List<AutoFlipInventoryItem> holdItems = getAutoFlipHoldInventorySnapshotInDisplayOrder();
         for (AutoFlipInventoryItem holdItem : holdItems)
         {
@@ -12760,22 +12004,31 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             ));
         }
 
-        // Priority contract: sell held items first, then ready user To-Buy watches, then
+        // Priority contract: sell held items first, then user To-Buy watches, then
         // fill the remaining slots from the ranked AutoFlip universe.
-        for (AutoFlipToBuyItem toBuyItem : getAutoFlipToBuyReadySnapshot())
+        for (AutoFlipToBuyItem toBuyItem : getAutoFlipToBuySnapshot())
         {
             if (toBuyItem == null || toBuyItem.getItemId() <= 0)
             {
                 continue;
             }
 
+            String status = toBuyItem.getStatus() == null
+                ? ""
+                : toBuyItem.getStatus().trim().toUpperCase(java.util.Locale.ROOT);
+            if ("SOLD".equals(status) || "REMOVED".equals(status))
+            {
+                continue;
+            }
+
             int canonicalItemId = canonicalizeAutoFlipInventoryItemId(toBuyItem.getItemId());
+            AutoFlipPayloadRow payloadRow = findAutoFlipPayloadRowByCanonicalItemId(universeRows, canonicalItemId);
             boolean accountEligible = isAutoFlipItemAllowedForCurrentAccount(toBuyItem.getItemId());
             boolean activeOfferPresent = isAutoFlipActiveOfferPresent(toBuyItem.getItemId());
             boolean duplicatePriority = priorityItemIds.contains(canonicalItemId);
-            // A ready To-Buy watch is an explicit user priority. Keep it on the board even
+            // A To-Buy watch is an explicit user priority. Keep it on the board even
             // when the ordinary ranked-item membership filter would reject it; the watchlist
-            // already exposes the item as BUY NOW and owns this priority decision.
+            // owns this priority decision.
             if (!shouldReserveAutoFlipPriorityItem(
                 isAutoFlipPriorityCardAllowedForCurrentAccount("TO_BUY", accountEligible),
                 activeOfferPresent,
@@ -12802,6 +12055,10 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 toBuyItem.getEffectiveBuyThresholdGp(),
                 toBuyItem.getTargetBuyPriceGp()
             );
+            if (targetOrRecommendedGp <= 0L && payloadRow != null)
+            {
+                targetOrRecommendedGp = Math.max(0L, payloadRow.buyPriceGp);
+            }
             long toBuyTotalCostGp = Math.max(0L, targetOrRecommendedGp) * Math.max(1, toBuyItem.getQuantity());
             if (targetOrRecommendedGp <= 0L || toBuyTotalCostGp <= 0L)
             {
@@ -12815,20 +12072,34 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             reservedSlots.add(chosenSlot);
             priorityItemIds.add(canonicalItemId);
             toBuyReservedCapitalGp += toBuyTotalCostGp;
+            String itemName = toBuyItem.getItemName();
+            if ((itemName == null || itemName.trim().isEmpty()) && payloadRow != null)
+            {
+                itemName = payloadRow.itemName;
+            }
+            if (itemName == null || itemName.trim().isEmpty())
+            {
+                itemName = resolveAutoFlipItemName(toBuyItem.getItemId(), "Item " + toBuyItem.getItemId());
+            }
+            long sellPriceGp = Math.max(0L, toBuyItem.getCurrentSellPriceGp());
+            if (sellPriceGp <= 0L && payloadRow != null)
+            {
+                sellPriceGp = Math.max(0L, payloadRow.sellPriceGp);
+            }
             toBuyPriorityCards.add(new AutoFlipBoardCard(
                 chosenSlot,
                 toBuyItem.getItemId(),
-                toBuyItem.getItemName(),
+                itemName,
                 Math.max(1, toBuyItem.getQuantity()),
                 Math.max(1, toBuyItem.getQuantity()),
                 targetOrRecommendedGp,
-                Math.max(0L, toBuyItem.getCurrentSellPriceGp()),
+                sellPriceGp,
                 0L,
                 0L,
                 "buy now",
                 "TO_BUY",
-                "to-buy: user watch is ready",
-                getAutoFlipMarketItemUrl(toBuyItem.getItemId(), toBuyItem.getItemName()),
+                "to-buy: user watch prioritized",
+                getAutoFlipMarketItemUrl(toBuyItem.getItemId(), itemName),
                 1.0D,
                 null
             ));
@@ -12836,10 +12107,11 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 "AUTOFLIP_TO_BUY_PRIORITY_CARD"
                     + " slot=" + chosenSlot
                     + " item_id=" + toBuyItem.getItemId()
-                    + " item_name=" + safe(toBuyItem.getItemName())
+                    + " item_name=" + safe(itemName)
                     + " target_each_gp=" + targetOrRecommendedGp
                     + " total_cost_gp=" + toBuyTotalCostGp
                     + " custom_target=" + (toBuyItem.getTargetBuyPriceGp() > 0L)
+                    + " payload_price_fallback=" + (payloadRow != null)
             );
         }
 
@@ -12886,11 +12158,25 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         slots = Math.max(1, Math.min(8, buySlots));
 
         String sliceKey = risk + ":" + hours + "h:" + budgetBand;
-        java.util.List<AutoFlipPayloadRow> universeRows = localPayloadCurrentRankedUniverseRows();
         if (universeRows == null || universeRows.isEmpty())
         {
             logAutoFlipVerbose("AUTOFLIP_LOCAL_SELECT missing_ranked_universe slice=" + sliceKey + " budget=" + budget + " slots=" + slots);
-            return java.util.Collections.emptyList();
+            java.util.List<AutoFlipBoardCard> priorityOnlyCards = new java.util.ArrayList<>(java.util.Collections.nCopies(8, null));
+            for (AutoFlipBoardCard sellCard : sellPriorityCards)
+            {
+                if (sellCard != null && sellCard.getSlotIndex() >= 0 && sellCard.getSlotIndex() < priorityOnlyCards.size())
+                {
+                    priorityOnlyCards.set(sellCard.getSlotIndex(), sellCard);
+                }
+            }
+            for (AutoFlipBoardCard toBuyCard : toBuyPriorityCards)
+            {
+                if (toBuyCard != null && toBuyCard.getSlotIndex() >= 0 && toBuyCard.getSlotIndex() < priorityOnlyCards.size())
+                {
+                    priorityOnlyCards.set(toBuyCard.getSlotIndex(), toBuyCard);
+                }
+            }
+            return priorityOnlyCards;
         }
 
         java.util.Set<Integer> selectedItemIds = new java.util.HashSet<>();
@@ -13265,7 +12551,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         if (client != null && !client.isClientThread())
         {
             // The ranked payload already splits F2P vs members pools. Avoid calling
-            // ItemManager composition APIs from background warm/optimize workers.
+            // ItemManager composition APIs from background warm workers.
             return false;
         }
 
@@ -13463,7 +12749,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 0,
                 "",
                 "",
-                normalizeAutoFlipRisk(autoFlipMenuRiskMode),
+                "",
                 getAutoFlipPayloadBudgetBand(getAutoFlipEffectiveBudgetGp()),
                 "unknown",
                 autoFlipPayloadAlgorithmVersion,
@@ -13573,7 +12859,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         String confidence = readJsonString(obj, "confidence_band", "");
         String reason = readJsonString(obj, "reason", model > 0.0D || fill > 0.0D
             ? "Model score " + String.format(java.util.Locale.US, "%.3f", model) + ", fill " + String.format(java.util.Locale.US, "%.1f", fill * 100.0D) + "%"
-            : "Ranked optimizer pool item"
+            : "Ranked recommendation pool item"
         );
         String marketUrl = readJsonString(obj, "market_url", getAutoFlipMarketItemUrl(itemId, itemName));
         String holdLabel = holdHours > 0.0D ? String.format(java.util.Locale.US, "%.1fh max", holdHours) : "unknown";
@@ -13946,6 +13232,24 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
     static boolean isAutoFlipPriorityCardAllowedForCurrentAccount(String riskLabel, boolean accountEligible)
     {
         return "TO_BUY".equalsIgnoreCase(safe(riskLabel)) || accountEligible;
+    }
+
+    private AutoFlipPayloadRow findAutoFlipPayloadRowByCanonicalItemId(java.util.List<AutoFlipPayloadRow> rows, int canonicalItemId)
+    {
+        if (rows == null || rows.isEmpty() || canonicalItemId <= 0)
+        {
+            return null;
+        }
+
+        for (AutoFlipPayloadRow row : rows)
+        {
+            if (row != null && canonicalizeAutoFlipInventoryItemId(row.itemId) == canonicalItemId)
+            {
+                return row;
+            }
+        }
+
+        return null;
     }
 
     private String summarizeAutoFlipPayloadRows(java.util.List<AutoFlipPayloadRow> rows)
@@ -14373,7 +13677,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 "AUTOFLIP_LOCAL_REFRESH_ITEM_RETIRED"
                     + " slot=" + requestedSlotIndex
                     + " requested_item_id=" + requestedItemId
-                    + " reason=retired_until_optimize"
+                    + " reason=retired_until_refresh"
             );
             return retiredOnly;
         }
@@ -14425,14 +13729,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 + " requested_item_id=" + requestedItemId
                 + " replace_at=" + replaceAt
                 + " current_size=" + current.size()
-        );
-        writeAutoFlipPostConfirmTrace(
-            "AUTOFLIP_POST_CONFIRM_TRACE"
-                + " phase=refresh_replace_start"
-                + " requested_slot=" + requestedSlotIndex
-                + " requested_item_id=" + requestedItemId
-                + " replace_at=" + replaceAt
-                + " current_order=" + describeAutoFlipBoardCards(current)
         );
 
         AutoFlipBoardCard oldCard = current.get(replaceAt);
@@ -14514,18 +13810,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         // Rebuilding the whole board here can compact the list and shift later cards left,
         // which makes confirmed items appear to drift into the next slot.
         java.util.List<AutoFlipBoardCard> scaled = next;
-        writeAutoFlipPostConfirmTrace(
-            "AUTOFLIP_POST_CONFIRM_TRACE"
-                + " phase=refresh_replace_end"
-                + " requested_slot=" + requestedSlotIndex
-                + " requested_item_id=" + requestedItemId
-                + " replace_at=" + replaceAt
-                + " output_slot=" + outputSlot
-                + " old_item_id=" + (oldCard == null ? 0 : oldCard.getItemId())
-                + " new_item_id=" + replacement.itemId
-                + " next_order=" + describeAutoFlipBoardCards(next)
-                + " scaled_order=" + describeAutoFlipBoardCards(scaled)
-        );
 
         return scaled;
     }
@@ -15045,16 +14329,12 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
     }
     private String buildAutoFlipSettingsPayload()
     {
-        String strategy = normalizeAutoFlipRisk(autoFlipMenuRiskMode);
-        String legacyRisk = toLegacyAutoFlipRiskLevel(strategy);
         long cash = getCurrentCashStackGp();
         long budget = autoFlipMenuUseCashStack ? cash : autoFlipMenuManualBudgetGp;
 
         return "{"
             + "\"hours_away\":" + autoFlipMenuHoursAway + ","
             + "\"budget_gp\":" + budget + ","
-            + "\"strategy_mode\":\"" + safe(strategy) + "\","
-            + "\"risk_level\":\"" + safe(legacyRisk) + "\","
             + "\"use_current_cash_stack\":" + autoFlipMenuUseCashStack + ","
             + "\"cash_stack_gp\":" + cash
             + "}";
@@ -15090,7 +14370,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         long total = 0L;
         java.util.List<AutoFlipBoardCard> cards = autoFlipBoardCards;
 
-        if (cards == null || cards.isEmpty() || autoFlipOptimizeBoardInProgress)
+        if (cards == null || cards.isEmpty())
         {
             return Math.max(0L, autoFlipLastNonEmptyBoardBudgetPlannedGp);
         }
@@ -15119,7 +14399,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         long total = 0L;
         java.util.List<AutoFlipBoardCard> cards = autoFlipBoardCards;
 
-        if (cards == null || cards.isEmpty() || autoFlipOptimizeBoardInProgress)
+        if (cards == null || cards.isEmpty())
         {
             return Math.max(0L, autoFlipLastNonEmptyBoardTotalExpectedProfitGp);
         }
@@ -15145,8 +14425,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
     private volatile java.util.List<AutoFlipCardActionBounds> autoFlipCardActionBounds = java.util.Collections.emptyList();
     private volatile java.util.List<Rectangle> autoFlipCardBlockBounds = java.util.Collections.emptyList();
     private volatile java.util.List<AutoFlipGeMarketLinkBounds> autoFlipGeMarketLinkBounds = java.util.Collections.emptyList();
-
-    // AUTOFLIP_PATCH_J_NATIVE_SLOT_ITEM_MEMORY_V1
     // Native Buy/Sell pass-through holes need their own slot->item memory because they are not consumed.
     private volatile java.util.List<AutoFlipNativeButtonHoleBounds> autoFlipNativeButtonHoleBounds = java.util.Collections.emptyList();
     private volatile int autoFlipLastNativeButtonSlotIndex = -1;
@@ -15157,8 +14435,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
     private volatile boolean autoFlipLastSellTargetWasInventoryClick = false;
     private volatile long autoFlipPendingBuySearchSeedDeadlineMs = 0L;
     private volatile int autoFlipPendingBuySearchSeedAttempts = 0;
-
-    // AUTOFLIP_PATCH_O_QUANTITY_CHATBOX_STATE_V1
     private volatile Rectangle autoFlipQuantityChatboxButtonBounds = null;
     private volatile String autoFlipQuantityChatboxButtonLabel = "";
     private volatile int autoFlipQuantityChatboxQty = 0;
@@ -15173,12 +14449,9 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
     // AUTOFLIP_GUIDED_SETUP_FLOW_STATE_V15
     private volatile String autoFlipGuidedSetupStage = "";
     private volatile long autoFlipGuidedSetupStageAtMs = 0L;
-    // AUTOFLIP_PATCH_POST_CONFIRM_SEARCH_INJECTION_RESET_V34
     // Tracks official guided setup state so native Confirm clicks can clear prompt/search ownership
     // even when the click lands outside the AutoFlip helper bounds.
     private volatile String autoFlipLastOfficialGuidedSetupState = "";
-
-    // AUTOFLIP_PATCH_T2_ITEM_SEARCH_REPEAT_STATE_V1
     private volatile int autoFlipLastGeSearchInjectedItemId = 0;
     private volatile String autoFlipLastGeSearchInjectedText = "";
     private volatile long autoFlipLastGeSearchInjectedAtMs = 0L;
@@ -15286,8 +14559,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 {
                     continue;
                 }
-
-                // AUTOFLIP_PATCH_STALE_NATIVE_BUTTON_TARGET_NEWEST_WINS_V32
                 // Native Buy/Sell hole rectangles are reused across recommendations. Replace stale
                 // entries for the same slot or same physical hole so the next recommendation does not
                 // inherit the previous offer target item.
@@ -15310,8 +14581,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         {
             return null;
         }
-
-        // AUTOFLIP_PATCH_STALE_NATIVE_BUTTON_TARGET_NEWEST_WINS_V32
         // Prefer the newest remembered native hole. Old entries can share the same screen
         // rectangle after moving from recommendation one to recommendation two.
         for (int i = bounds.size() - 1; i >= 0; i--)
@@ -15334,7 +14603,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             String title = getGeHeaderTextForOverlay();
                 if (title == null || !title.startsWith("Grand Exchange: Set up offer"))
                 {
-                    // AUTOFLIP_PATCH_O_CLEAR_STALE_NATIVE_MEMORY_V1
                     autoFlipLastNativeButtonSlotIndex = -1;
                     autoFlipLastNativeButtonItemId = 0;
                     autoFlipLastNativeButtonRememberedAtMs = 0L;
@@ -15357,16 +14625,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         {
             autoFlipPendingGuidedSetupItemId = rememberedCard.getItemId();
             autoFlipPendingGuidedSetupItemName = rememberedCard.getItemName() == null ? "" : rememberedCard.getItemName();
-            writeAutoFlipPostConfirmTrace(
-                "AUTOFLIP_POST_CONFIRM_TRACE"
-                    + " phase=native_button_memory"
-                    + " slot=" + entry.slotIndex
-                    + " item_id=" + entry.itemId
-                    + " pending_item_id=" + autoFlipPendingGuidedSetupItemId
-                    + " pending_item_name=" + safe(autoFlipPendingGuidedSetupItemName)
-                    + " x=" + mouseX
-                    + " y=" + mouseY
-            );
             boolean buyRecommendation = !isAutoFlipSellPlanBoardCard(rememberedCard);
             if (buyRecommendation)
             {
@@ -15424,14 +14682,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         }
 
         autoFlipPendingBuySearchSeedAttempts++;
-        writeAutoFlipPostConfirmTrace(
-            "AUTOFLIP_POST_CONFIRM_TRACE"
-                + " phase=pending_buy_search_retry"
-                + " attempt=" + autoFlipPendingBuySearchSeedAttempts
-                + " item_id=" + autoFlipPendingGuidedSetupItemId
-                + " item_name=" + safe(targetName)
-                + " current_input=" + safe(currentInput)
-        );
         injectAutoFlipGeSearchText(targetName, autoFlipPendingGuidedSetupItemId, true);
     }
 
@@ -15578,8 +14828,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 }
             }
         }
-
-        // AUTOFLIP_PATCH_O_SETUP_TARGET_NO_FALLBACK_V1
         // Never fall back to slot 0 for setup screens. If the click did not come from
         // a remembered AutoFlip native Buy/Sell hole, no AutoFlip setup overlay should render.
         logAutoFlipVerbose(
@@ -15628,8 +14876,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 {
                     continue;
                 }
-
-                // AUTOFLIP_PATCH_STALE_CARD_ACTION_TARGET_NEWEST_WINS_V1
                 // Board cards reuse the same physical action rectangles across recomputes.
                 // Replace stale entries for the same slot or overlapping rectangle so the
                 // current card owns the click target.
@@ -15711,15 +14957,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
     {
         if (isAutoFlipNativePricePromptVisible())
         {
-            appendInjectionTrace(
-                "ordinary_buy_state_clear_skipped",
-                "clearAutoFlipOrdinaryBuyState",
-                "reason=native_price_prompt_visible"
-                    + " item_id=" + autoFlipOrdinaryBuySetupItemId
-                    + " manual_choice=" + autoFlipOrdinaryBuyPricePromptManualChoiceMade
-                    + " manual_selected_gp=" + autoFlipOrdinaryBuyManualSelectedPriceGp
-                    + " auto_fill_item_id=" + autoFlipOrdinaryBuyAutoFillItemId
-            );
             return;
         }
 
@@ -15739,13 +14976,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         autoFlipOrdinaryBuyTargetPriceButtonLabel = "";
         autoFlipOrdinaryBuyTargetPriceGp = 0;
         autoFlipOrdinaryBuyManualSelectedPriceGp = 0;
-        appendInjectionTrace(
-            "ordinary_buy_state_clear",
-            "clearAutoFlipOrdinaryBuyState",
-            "manual_choice=" + autoFlipOrdinaryBuyPricePromptManualChoiceMade
-                + " item_id=" + autoFlipOrdinaryBuySetupItemId
-                + " auto_fill_item_id=" + autoFlipOrdinaryBuyAutoFillItemId
-        );
         autoFlipOrdinaryBuyPricePromptManualChoiceMade = false;
     }
 
@@ -15964,19 +15194,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             ? manualSelectedPriceGp
             : autoFlipOrdinaryBuySuggestedPriceGp;
 
-        appendInjectionTrace(
-            "ordinary_buy_refresh_state",
-            "refreshAutoFlipOrdinaryBuyPriceOption",
-            "item_id=" + itemId
-                + " prompt_gp=" + promptGp
-                + " suggested_gp=" + autoFlipOrdinaryBuySuggestedPriceGp
-                + " last_bought_gp=" + autoFlipOrdinaryBuyLastBoughtPriceGp
-                + " target_gp=" + autoFlipOrdinaryBuyTargetPriceGp
-                + " manual_choice=" + autoFlipOrdinaryBuyPricePromptManualChoiceMade
-                + " manual_selected_gp=" + autoFlipOrdinaryBuyManualSelectedPriceGp
-                + " effective_gp=" + effectivePriceGp
-                + " auto_fill_item_id=" + autoFlipOrdinaryBuyAutoFillItemId
-        );
 
         autoFlipOrdinaryBuyRecommendedButtonBounds = null;
         autoFlipOrdinaryBuyLastBoughtButtonBounds = null;
@@ -16004,15 +15221,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 suggested,
                 autoFlipOrdinaryBuyPricePromptManualChoiceMade))
             {
-                appendInjectionTrace(
-                    "ordinary_buy_refresh_inject",
-                    "refreshAutoFlipOrdinaryBuyPriceOption",
-                    "item_id=" + itemId
-                        + " chosen_gp=" + effectivePriceGp
-                        + " prompt_gp=" + promptGp
-                        + " manual_choice=" + autoFlipOrdinaryBuyPricePromptManualChoiceMade
-                        + " manual_selected_gp=" + autoFlipOrdinaryBuyManualSelectedPriceGp
-                );
                 injectAutoFlipPriceChatboxValue(effectivePriceGp, "ordinary_buy_refresh_autofill");
                 autoFlipOrdinaryBuyAutoFillItemId = itemId;
             }
@@ -16285,17 +15493,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             autoFlipSellPriceDebugItemNameById.put(resolvedItemId, autoFlipOrdinarySellSetupItemName);
             autoFlipOrdinarySellSetupLastSeenMs = System.currentTimeMillis();
             requestAutoFlipApiSellPrice(resolvedItemId);
-            writeAutoFlipPostConfirmTrace(
-                "AUTOFLIP_POST_CONFIRM_TRACE"
-                    + " phase=ordinary_sell_visible_ui_memory"
-                    + " item_id=" + resolvedItemId
-                    + " item_name=" + safe(autoFlipOrdinarySellSetupItemName)
-                    + " visible_name=" + safe(visibleName)
-                    + " current_ge_item_id=" + currentGeItemId
-                    + " inventory_click_owner=" + inventoryClickOwnsSelection
-                    + " inventory_snapshot_age_ms=" + Math.max(0L, System.currentTimeMillis() - autoFlipGeSessionInventoryCapturedAtMs)
-                    + " cached_sell_price=" + getAutoFlipCachedSellPriceGp(resolvedItemId)
-            );
         }
         catch (Throwable error)
         {
@@ -16653,15 +15850,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             return;
         }
 
-        appendInjectionTrace(
-            "ordinary_sell_suggested_inject",
-            "injectAutoFlipOrdinarySellSuggestedPriceOnce",
-            "item_id=" + itemId
-                + " gp=" + gp
-                + " force=" + force
-                + " last_injected_gp=" + autoFlipLastInjectedPriceGp
-                + " last_injected_at_ms=" + autoFlipLastInjectedPriceAtMs
-        );
         injectAutoFlipPriceChatboxValue(gp, "ordinary_sell_suggested_price");
         autoFlipOrdinarySellSuggestedAutoFillItemId = itemId;
         autoFlipLastInjectedPriceGp = gp;
@@ -16697,7 +15885,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
     public boolean refreshAutoFlipPriceChatboxInjectState()
     {
-        // AUTOFLIP_PATCH_AN5_PRICE_REFRESH_BOARD_CARD_ONLY_V1
         try
         {
             autoFlipPriceChatboxButtonBounds = null;
@@ -16835,7 +16022,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             }
 
             int qty = Math.max(1, card.getQuantity());
-            // AUTOFLIP_PATCH_AK1_QTY_CHATBOX_INDEPENDENT_CONFIG_COMMENT_V1
             // Use the independent quantity configured rectangle.
             autoFlipQuantityChatboxButtonBounds = getConfiguredAutoFlipQuantityChatboxInjectBounds();
             autoFlipQuantityChatboxButtonLabel = "AF Qty: " + qty;
@@ -16883,14 +16069,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 return false;
             }
 
-            appendInjectionTrace(
-                "quantity_chip_click",
-                "handleAutoFlipQuantityChatboxInjectClick",
-                "qty=" + qty
-                    + " mouseX=" + mouseX
-                    + " mouseY=" + mouseY
-                    + " prompt_text=" + safe(cleanWidgetText(client == null || client.getWidget(10616875) == null ? "" : client.getWidget(10616875).getText()))
-            );
             autoFlipQuantityPromptAutoFillLocked = true;
             autoFlipQuantityPromptManualChoiceMade = true;
             autoFlipQuantityPromptManualSelectedQty = qty;
@@ -16937,15 +16115,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 if (!liveQuantityPrompt)
                 {
                     String promptText = promptWidget == null ? "" : cleanWidgetText(promptWidget.getText());
-                    appendInjectionTrace(
-                        "blocked",
-                        source,
-                        "qty=" + value
-                            + " prompt=" + safe(promptText)
-                            + " prompt_widget=" + (promptWidget != null)
-                            + " input_widget=" + (inputWidget != null)
-                            + " live_prompt=" + liveQuantityPrompt
-                    );
                     logAutoFlipVerbose(
                         "AUTOFLIP_QUANTITY_CHATBOX_INJECT_BLOCKED"
                             + " qty=" + value
@@ -16967,14 +16136,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                     inputWidget.revalidate();
                 }
 
-                appendInjectionTrace(
-                    "applied",
-                    source,
-                    "qty=" + value
-                        + " live_prompt=" + liveQuantityPrompt
-                        + " prompt_text=" + safe(cleanWidgetText(promptWidget.getText()))
-                        + " input_widget=" + (inputWidget != null)
-                );
                 logAutoFlipVerbose("AUTOFLIP_QUANTITY_CHATBOX_INJECT_APPLIED qty=" + value + " inputWidget=" + (inputWidget != null));
             }
             catch (Throwable error)
@@ -17224,7 +16385,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
     private Rectangle getConfiguredAutoFlipPriceChatboxInjectBounds()
     {
-        // AUTOFLIP_PATCH_AK1_CHATBOX_NO_LEGACY_FALLBACKS_V1
         // Price helper uses only independent price config keys.
         return new Rectangle(
             readIntConfig("setup.price.chatbox.inject.x", 291),
@@ -17236,7 +16396,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
     private Rectangle getConfiguredAutoFlipQuantityChatboxInjectBounds()
     {
-        // AUTOFLIP_PATCH_AK1_QUANTITY_CHATBOX_NO_LEGACY_FALLBACKS_V1
         // Anchor to the live native quantity prompt when possible so the helper
         // stays beside the prompt instead of drifting into the item-description box.
         if (client != null)
@@ -17331,16 +16490,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         {
             autoFlipOrdinaryBuyPricePromptManualChoiceMade = true;
             autoFlipOrdinaryBuyManualSelectedPriceGp = autoFlipOrdinaryBuyTargetPriceGp;
-            appendInjectionTrace(
-                "ordinary_buy_chip_click",
-                "handleAutoFlipOrdinaryBuyPromptButtonClick",
-                "chip=target item_id=" + autoFlipOrdinaryBuyAutoFillItemId
-                    + " gp=" + autoFlipOrdinaryBuyTargetPriceGp
-                    + " manual_choice=" + autoFlipOrdinaryBuyPricePromptManualChoiceMade
-                    + " selected_gp=" + autoFlipOrdinaryBuyManualSelectedPriceGp
-                    + " mouseX=" + mouseX
-                    + " mouseY=" + mouseY
-            );
             injectAutoFlipPriceChatboxValue(autoFlipOrdinaryBuyTargetPriceGp, "ordinary_buy_target_button");
             return true;
         }
@@ -17349,16 +16498,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         {
             autoFlipOrdinaryBuyPricePromptManualChoiceMade = true;
             autoFlipOrdinaryBuyManualSelectedPriceGp = autoFlipOrdinaryBuySuggestedPriceGp;
-            appendInjectionTrace(
-                "ordinary_buy_chip_click",
-                "handleAutoFlipOrdinaryBuyPromptButtonClick",
-                "chip=recommended item_id=" + autoFlipOrdinaryBuyAutoFillItemId
-                    + " gp=" + autoFlipOrdinaryBuySuggestedPriceGp
-                    + " manual_choice=" + autoFlipOrdinaryBuyPricePromptManualChoiceMade
-                    + " selected_gp=" + autoFlipOrdinaryBuyManualSelectedPriceGp
-                    + " mouseX=" + mouseX
-                    + " mouseY=" + mouseY
-            );
             injectAutoFlipPriceChatboxValue(autoFlipOrdinaryBuySuggestedPriceGp, "ordinary_buy_recommended_button");
             return true;
         }
@@ -17367,16 +16506,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         {
             autoFlipOrdinaryBuyPricePromptManualChoiceMade = true;
             autoFlipOrdinaryBuyManualSelectedPriceGp = autoFlipOrdinaryBuyLastBoughtPriceGp;
-            appendInjectionTrace(
-                "ordinary_buy_chip_click",
-                "handleAutoFlipOrdinaryBuyPromptButtonClick",
-                "chip=last_bought item_id=" + autoFlipOrdinaryBuyAutoFillItemId
-                    + " gp=" + autoFlipOrdinaryBuyLastBoughtPriceGp
-                    + " manual_choice=" + autoFlipOrdinaryBuyPricePromptManualChoiceMade
-                    + " selected_gp=" + autoFlipOrdinaryBuyManualSelectedPriceGp
-                    + " mouseX=" + mouseX
-                    + " mouseY=" + mouseY
-            );
             injectAutoFlipPriceChatboxValue(autoFlipOrdinaryBuyLastBoughtPriceGp, "ordinary_buy_last_bought_button");
             return true;
         }
@@ -17578,8 +16707,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 }
 
                 String promptText = cleanWidgetText(promptWidget.getText()).toLowerCase(java.util.Locale.ROOT);
-
-                // AUTOFLIP_PATCH_PROMPT_KIND_STRICT_NATIVE_PROMPT_V2
                 // Trust only the native chat prompt widget. The setup overlay always contains labels like
                 // "Quantity", so global visible-text scanning can falsely trigger quantity autofill.
                 boolean quantityPrompt = promptText.contains("how many")
@@ -17615,20 +16742,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
                 String autoFillStage = autoFlipGuidedSetupStage == null ? "" : autoFlipGuidedSetupStage;
                 boolean ordinarySellPricePromptOpen = isAutoFlipOrdinarySellPricePromptOpenForOverlay();
-                if (!ordinarySellPricePromptOpen && "price".equals(kind) && autoFlipOrdinaryBuyPricePromptManualChoiceMade)
-                {
-                    appendInjectionTrace(
-                        "manual_choice_preserve",
-                        "maybeAutoFillNativeGePromptIfNeeded",
-                        "kind=" + kind
-                            + " value=" + value
-                            + " manual_choice=" + autoFlipOrdinaryBuyPricePromptManualChoiceMade
-                            + " selected_gp=" + autoFlipOrdinaryBuyManualSelectedPriceGp
-                            + " prompt_text=" + safe(promptText)
-                            + " auto_fill_stage=" + safe(autoFillStage)
-                            + " ordinary_sell_prompt_open=" + ordinarySellPricePromptOpen
-                    );
-                }
                 // Ordinary sell prompts are not part of the guided setup flow, so they should
                 // autofill even when the guided stage cache is empty or still points at a prior flow.
                 if (!ordinarySellPricePromptOpen)
@@ -17646,53 +16759,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                     }
                 }
 
-                // AUTOFLIP_QTY_PRICE_PROMPT_TRACE_V1
-                // Trace-only: records the selected board card and value being inserted into the native GE prompt.
-                // This does not change prompt behavior.
-                try
-                {
-                    AutoFlipBoardCard traceCard = getAutoFlipSetupTargetBoardCard();
-                    if (isAutoFlipVerboseRuntimeLoggingEnabled())
-                    {
-                        if (traceCard != null)
-                        {
-                            logAutoFlipVerbose(
-                                "AUTOFLIP_QTY_PRICE_PROMPT_TRACE"
-                                    + " kind=" + safe(kind)
-                                    + " inserted_value=" + value
-                                    + " stage=" + safe(autoFillStage)
-                                    + " item_id=" + traceCard.getItemId()
-                                    + " item_name=" + safe(traceCard.getItemName())
-                                    + " card_qty=" + traceCard.getQuantity()
-                                    + " card_buy_gp=" + traceCard.getBuyPriceGp()
-                                    + " card_sell_gp=" + traceCard.getSellPriceGp()
-                                    + " card_capital_gp=" + traceCard.getPlannedCapitalGp()
-                            );
-                        }
-                        else
-                        {
-                            logAutoFlipVerbose(
-                                "AUTOFLIP_QTY_PRICE_PROMPT_TRACE"
-                                    + " kind=" + safe(kind)
-                                    + " inserted_value=" + value
-                                    + " stage=" + safe(autoFillStage)
-                                    + " item_id=0"
-                                    + " item_name="
-                                    + " card_qty=0"
-                                    + " card_buy_gp=0"
-                                    + " card_sell_gp=0"
-                                    + " card_capital_gp=0"
-                            );
-                        }
-                    }
-                }
-                catch (Throwable traceError)
-                {
-                    if (isAutoFlipVerboseRuntimeLoggingEnabled())
-                    {
-                        logAutoFlipVerbose("AUTOFLIP_QTY_PRICE_PROMPT_TRACE_ERROR " + traceError.getClass().getSimpleName() + " " + safe(traceError.getMessage()));
-                    }
-                }
                 if (value <= 0)
                 {
                     return;
@@ -17719,17 +16785,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 if ("quantity".equals(kind) && manualQuantityOverride)
                 {
                     autoFlipQuantityPromptAutoFillLocked = true;
-                    appendInjectionTrace(
-                        "manual_choice_preserve",
-                        "maybeAutoFillNativeGePromptIfNeeded",
-                        "kind=" + kind
-                            + " value=" + value
-                            + " manual_choice=" + autoFlipQuantityPromptManualChoiceMade
-                            + " selected_qty=" + autoFlipQuantityPromptManualSelectedQty
-                            + " current_input_gp=" + currentInputGp
-                            + " current_input_text=" + safe(currentInputText)
-                            + " prompt_text=" + safe(promptText)
-                    );
                     if (isAutoFlipVerboseRuntimeLoggingEnabled())
                     {
                         logAutoFlipVerbose(
@@ -17747,16 +16802,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
                 if ("quantity".equals(kind) && quantityAutoFillLocked)
                 {
-                    appendInjectionTrace(
-                        "blocked",
-                        "maybeAutoFillNativeGePromptIfNeeded",
-                        "kind=" + kind
-                            + " value=" + value
-                            + " reason=locked_after_fill"
-                            + " current_input_gp=" + currentInputGp
-                            + " current_input_text=" + safe(currentInputText)
-                            + " prompt_text=" + safe(promptText)
-                    );
                     return;
                 }
 
@@ -17765,18 +16810,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                     autoFlipQuantityPromptManualChoiceMade = true;
                     autoFlipQuantityPromptManualSelectedQty = currentInputGp;
                     autoFlipQuantityPromptAutoFillLocked = true;
-                    appendInjectionTrace(
-                        "manual_choice_preserve",
-                        "maybeAutoFillNativeGePromptIfNeeded",
-                        "kind=" + kind
-                            + " value=" + value
-                            + " reason=manual_override"
-                            + " selected_qty=" + autoFlipQuantityPromptManualSelectedQty
-                            + " current_input_gp=" + currentInputGp
-                            + " current_input_text=" + safe(currentInputText)
-                            + " prompt_text=" + safe(promptText)
-                            + " manual_choice=" + autoFlipOrdinaryBuyPricePromptManualChoiceMade
-                    );
                     if (isAutoFlipVerboseRuntimeLoggingEnabled())
                     {
                         logAutoFlipVerbose(
@@ -17793,21 +16826,8 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
                 if (!forceWrite && (alreadyVisible || recentlyFilledSame))
                 {
-                    appendInjectionTrace(
-                        "blocked",
-                        "maybeAutoFillNativeGePromptIfNeeded",
-                        "kind=" + kind
-                            + " value=" + value
-                            + " reason=" + (alreadyVisible ? "already_visible" : "recently_filled_same")
-                            + " current_input_gp=" + currentInputGp
-                            + " current_input_text=" + safe(currentInputText)
-                            + " prompt_text=" + safe(promptText)
-                            + " manual_choice=" + autoFlipOrdinaryBuyPricePromptManualChoiceMade
-                    );
                     return;
                 }
-
-                // AUTOFLIP_PATCH_ITEM_SEARCH_MANUAL_FINAL_LETTER_BOX_V2_NATIVE_CLEANUP
                 client.setVarcStrValue(359, valueText);
                 inputWidget.setText("<col=000000>" + valueText + "*");
                 inputWidget.revalidate();
@@ -17836,19 +16856,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                     );
                 }
 
-                appendInjectionTrace(
-                    "applied",
-                    "maybeAutoFillNativeGePromptIfNeeded",
-                    "kind=" + kind
-                        + " value=" + valueText
-                        + " force_write=" + forceWrite
-                        + " already_visible=" + alreadyVisible
-                        + " recently_filled_same=" + recentlyFilledSame
-                        + " current_input_gp=" + currentInputGp
-                        + " current_input_text=" + safe(currentInputText)
-                        + " prompt_text=" + safe(promptText)
-                        + " manual_choice=" + autoFlipOrdinaryBuyPricePromptManualChoiceMade
-                );
                 if (isAutoFlipVerboseRuntimeLoggingEnabled())
                 {
                     logAutoFlipVerbose(
@@ -18007,8 +17014,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             return value == null ? "" : value.toLowerCase(java.util.Locale.ROOT).trim();
         }
     }
-
-    // AUTOFLIP_PATCH_ITEM_SEARCH_TARGET_TEXT_HELPER_V1
     private boolean isAutoFlipGuidedSetupTargetItemTextVisible()
     {
         try
@@ -18033,7 +17038,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             return false;
         }
     }
-    // AUTOFLIP_PATCH_SELECTED_ITEM_STAGE_STABILIZE_V5
     private boolean isAutoFlipSelectedItemDetailPanelVisible()
     {
         try
@@ -18092,8 +17096,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             }
 
             String promptKind = getAutoFlipNativePromptKind();
-
-            // AUTOFLIP_PATCH_SELECTED_ITEM_EXACT_IDENTITY_V5
             // Selected item matching must preserve meaningful variants like (unf), (p), (p+), and (p++).
             // Only membership display text is ignored. Broad whole-UI contains(targetName) is not enough.
             boolean selectedDetailsVisible = autoFlipVisibleWidgetTextContainsAny(
@@ -18233,7 +17235,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         normalized = normalized.replaceAll("\\s+", " ").trim();
         return normalized;
     }
-    // AUTOFLIP_PATCH_PRICE_AUTOFILL_ADVANCES_CONFIRM_V2
     private boolean isAutoFlipGuidedSetupPromptAutoFilled(String kind)
     {
         try
@@ -18298,28 +17299,11 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             {
                 officialState = "";
             }
-
-            // AUTOFLIP_PATCH_POST_CONFIRM_SEARCH_INJECTION_RESET_V34
-            // AUTOFLIP_POST_CONFIRM_TRACE_V1
-            writeAutoFlipPostConfirmTrace("AUTOFLIP_POST_CONFIRM_TRACE"
-                    + " phase=official_state_sample"
-                    + " previous=" + autoFlipLastOfficialGuidedSetupState
-                    + " current=" + officialState
-                    + " guided_stage=" + autoFlipGuidedSetupStage
-                    + " seeded_item_id=" + autoFlipItemSearchSeededItemId
-                    + " last_injected_item_id=" + autoFlipLastGeSearchInjectedItemId
-            );
-
             // If the official state just left confirm-ready, a native Confirm click completed the offer.
             // Clear stale prompt/search ownership before the next item search state tries to seed text.
             if ("state_10_correct_item_qty_price_ok".equals(autoFlipLastOfficialGuidedSetupState)
                 && !"state_10_correct_item_qty_price_ok".equals(officialState))
             {
-                writeAutoFlipPostConfirmTrace("AUTOFLIP_POST_CONFIRM_TRACE"
-                        + " phase=state10_exit_detected"
-                        + " previous=" + autoFlipLastOfficialGuidedSetupState
-                        + " current=" + officialState
-                );
                 markAutoFlipGeSessionInventoryCacheDirty("confirm_state_exited");
                 clearAutoFlipPostConfirmPromptSearchOwnership();
             }
@@ -18328,14 +17312,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             switch (officialState)
             {
                 case "state_4a_item_search_first_time":
-                    writeAutoFlipPostConfirmTrace("AUTOFLIP_POST_CONFIRM_TRACE"
-                            + " phase=state4a_enter"
-                            + " previous=" + autoFlipLastOfficialGuidedSetupState
-                            + " seeded_item_id=" + autoFlipItemSearchSeededItemId
-                            + " seeded_text=" + autoFlipItemSearchSeededText
-                            + " last_injected_item_id=" + autoFlipLastGeSearchInjectedItemId
-                            + " last_injected_text=" + autoFlipLastGeSearchInjectedText
-                    );
                 {
                     Rectangle targetSearchResultBounds = getAutoFlipGuidedSetupTargetSearchResultBoundsByItemId();
                     if (targetSearchResultBounds == null)
@@ -18347,16 +17323,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 }
 
                 case "state_4b_item_search_previous_search_visible":
-                    writeAutoFlipPostConfirmTrace("AUTOFLIP_POST_CONFIRM_TRACE"
-                            + " phase=state4b_enter"
-                            + " previous=" + autoFlipLastOfficialGuidedSetupState
-                            + " seeded_item_id=" + autoFlipItemSearchSeededItemId
-                            + " seeded_text=" + autoFlipItemSearchSeededText
-                            + " last_injected_item_id=" + autoFlipLastGeSearchInjectedItemId
-                            + " last_injected_text=" + autoFlipLastGeSearchInjectedText
-                    );
                 {
-                    // AUTOFLIP_PATCH_STATE4B_FORCE_SEARCH_SEED_OVERWRITE_V30
                     // State 4b inherits RuneLite/Jagex previous-search rows. Force one native full-name
                     // search seed so the target item replaces stale previous-search display text.
                     retryAutoFlipSetupSearchInjection(true);
@@ -18390,12 +17357,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                     return "price_enter";
 
                 case "state_10_correct_item_qty_price_ok":
-                    writeAutoFlipPostConfirmTrace("AUTOFLIP_POST_CONFIRM_TRACE"
-                            + " phase=state10_observed"
-                            + " previous=" + autoFlipLastOfficialGuidedSetupState
-                            + " current=" + officialState
-                            + " guided_stage=" + autoFlipGuidedSetupStage
-                    );
                     return "confirm_click";
 
                 default:
@@ -18668,45 +17629,9 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
     }
 
     // AUTOFLIP_GUIDED_SETUP_FLOW_V17
-        // AUTOFLIP_PATCH_POST_CONFIRM_SEARCH_INJECTION_RESET_V34
     // Native Confirm may not pass through AutoFlip helper bounds. When the official state leaves
     // confirm-ready, clear only guided prompt/search ownership so the next offer can seed its own
     // target item name. Do not clear board recommendations, budget, settings, or card data.
-    // AUTOFLIP_POST_CONFIRM_FILE_TRACE_V1
-    private void writeAutoFlipPostConfirmTrace(String message)
-    {
-        if (!isAutoFlipVerboseRuntimeLoggingEnabled())
-        {
-            return;
-        }
-
-        logAutoFlipVerbose(message);
-        try
-        {
-            java.nio.file.Path tracePath = java.nio.file.Paths.get(
-                System.getProperty("user.home"),
-                ".runelite",
-                "autoflip_postconfirm_trace.log"
-            );
-            java.nio.file.Files.createDirectories(tracePath.getParent());
-            String line = System.currentTimeMillis() + "|" + message + System.lineSeparator();
-            java.nio.file.Files.write(
-                tracePath,
-                line.getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                java.nio.file.StandardOpenOption.CREATE,
-                java.nio.file.StandardOpenOption.APPEND
-            );
-        }
-        catch (Exception ex)
-        {
-            logAutoFlipVerbose(
-                "AUTOFLIP_POST_CONFIRM_FILE_TRACE_ERROR"
-                    + " type=" + ex.getClass().getSimpleName()
-                    + " message=" + ex.getMessage()
-            );
-        }
-    }
-
     private String describeAutoFlipBoardCards(java.util.List<AutoFlipBoardCard> cards)
     {
         if (cards == null || cards.isEmpty())
@@ -18755,15 +17680,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         autoFlipLastNativePromptAutoFillAtMs = 0L;
         autoFlipLastNativePromptAutoFillCheckMs = 0L;
 
-        writeAutoFlipPostConfirmTrace("AUTOFLIP_POST_CONFIRM_TRACE"
-                + " phase=reset_executed"
-                + " seeded_item_id=" + autoFlipItemSearchSeededItemId
-                + " seeded_text=" + autoFlipItemSearchSeededText
-                + " last_injected_item_id=" + autoFlipLastGeSearchInjectedItemId
-                + " last_injected_text=" + autoFlipLastGeSearchInjectedText
-                + " prompt_kind=" + autoFlipLastNativePromptAutoFillKind
-                + " prompt_value=" + autoFlipLastNativePromptAutoFillValue
-        );
         logAutoFlipVerbose("AUTOFLIP_POST_CONFIRM_PROMPT_SEARCH_RESET");
     }
     private void clearAutoFlipGuidedSetupState()
@@ -18862,14 +17778,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 markAutoFlipGeSessionInventoryCacheDirty("confirm_clicked");
                 if (autoFlipPendingGuidedSetupItemId > 0)
                 {
-                    writeAutoFlipPostConfirmTrace(
-                        "AUTOFLIP_POST_CONFIRM_TRACE"
-                            + " phase=confirm_click_consumed"
-                            + " item_id=" + autoFlipPendingGuidedSetupItemId
-                            + " item_name=" + safe(autoFlipPendingGuidedSetupItemName)
-                            + " last_slot=" + autoFlipLastNativeButtonSlotIndex
-                            + " last_item_id=" + autoFlipLastNativeButtonItemId
-                    );
                 }
 
                 clearAutoFlipGuidedSetupState();
@@ -18890,7 +17798,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
     private boolean autoFlipVisibleWidgetTextContainsAny(String... needles)
     {
-        // AUTOFLIP_PATCH_S_ITEM_SEARCH_WIDGET_SCAN_V1
         try
         {
             if (client == null || needles == null || needles.length == 0)
@@ -19109,162 +18016,8 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         }
     }
 
-    private volatile long autoFlipLastOrdinarySellWidgetDumpMs = 0L;
-    private volatile boolean autoFlipOptimizeBoardInProgress = false;
     private volatile long autoFlipLastNonEmptyBoardBudgetPlannedGp = 0L;
     private volatile long autoFlipLastNonEmptyBoardTotalExpectedProfitGp = 0L;
-
-    private void dumpAutoFlipOrdinarySellPriceWidgetsOnce()
-    {
-        try
-        {
-            if (client == null)
-            {
-                return;
-            }
-
-            long now = System.currentTimeMillis();
-            if (now - autoFlipLastOrdinarySellWidgetDumpMs < 5000L)
-            {
-                return;
-            }
-            autoFlipLastOrdinarySellWidgetDumpMs = now;
-
-            Widget offerText = client.getWidget(net.runelite.api.widgets.InterfaceID.GRAND_EXCHANGE, 27);
-            Widget offerContainer = client.getWidget(net.runelite.api.widgets.ComponentID.GRAND_EXCHANGE_OFFER_CONTAINER);
-
-            StringBuilder dump = new StringBuilder();
-            dump.append("AUTOFLIP_ORDINARY_SELL_WIDGET_DUMP");
-            dump.append(" item_id=").append(autoFlipOrdinarySellSetupItemId);
-            dump.append(" item_name=").append(safe(autoFlipOrdinarySellSetupItemName));
-            dump.append(" ge_title=").append(safe(getGeHeaderTextForOverlay()));
-            dump.append(" offerText=").append(describeAutoFlipWidgetBrief(offerText));
-            dump.append(" offerContainer=").append(describeAutoFlipWidgetBrief(offerContainer));
-
-            dumpAutoFlipWidgetTree("offerText", offerText, dump, 0, 4, new int[] {0});
-            dumpAutoFlipWidgetTree("offerContainer", offerContainer, dump, 0, 4, new int[] {0});
-
-            String message = dump.toString();
-            logAutoFlipVerbose(message);
-            writeAutoFlipSellWidgetDumpTrace(message);
-        }
-        catch (Throwable error)
-        {
-            logAutoFlipUiError("dumpAutoFlipOrdinarySellPriceWidgetsOnce", error);
-        }
-    }
-
-    private String describeAutoFlipWidgetBrief(Widget widget)
-    {
-        if (widget == null)
-        {
-            return "null";
-        }
-
-        try
-        {
-            Rectangle bounds = widget.getBounds();
-            String text = cleanWidgetText(widget.getText());
-            String name = cleanWidgetText(widget.getName());
-            return "{id=" + widget.getId()
-                + ",hidden=" + widget.isHidden()
-                + ",text=" + safe(text)
-                + ",name=" + safe(name)
-                + ",bounds=" + (bounds == null ? "null" : bounds.x + "," + bounds.y + "," + bounds.width + "," + bounds.height)
-                + "}";
-        }
-        catch (Throwable error)
-        {
-            return "{error=" + error.getClass().getSimpleName() + "}";
-        }
-    }
-
-    private void dumpAutoFlipWidgetTree(String label, Widget widget, StringBuilder out, int depth, int maxDepth, int[] count)
-    {
-        if (widget == null || depth > maxDepth || count == null || count.length == 0 || count[0] >= 120)
-        {
-            return;
-        }
-
-        try
-        {
-            if (!widget.isHidden())
-            {
-                String text = cleanWidgetText(widget.getText());
-                String name = cleanWidgetText(widget.getName());
-                Rectangle bounds = widget.getBounds();
-                out.append(System.lineSeparator())
-                    .append(label)
-                    .append(" depth=").append(depth)
-                    .append(" id=").append(widget.getId())
-                    .append(" itemId=").append(widget.getItemId())
-                    .append(" itemQty=").append(widget.getItemQuantity())
-                    .append(" text=").append(safe(text))
-                    .append(" name=").append(safe(name))
-                    .append(" bounds=")
-                    .append(bounds == null ? "null" : bounds.x + "," + bounds.y + "," + bounds.width + "," + bounds.height);
-                count[0]++;
-            }
-
-            Widget[] dynamicChildren = widget.getDynamicChildren();
-            if (dynamicChildren != null)
-            {
-                for (Widget child : dynamicChildren)
-                {
-                    dumpAutoFlipWidgetTree(label, child, out, depth + 1, maxDepth, count);
-                }
-            }
-
-            Widget[] staticChildren = widget.getStaticChildren();
-            if (staticChildren != null)
-            {
-                for (Widget child : staticChildren)
-                {
-                    dumpAutoFlipWidgetTree(label, child, out, depth + 1, maxDepth, count);
-                }
-            }
-
-            Widget[] nestedChildren = widget.getNestedChildren();
-            if (nestedChildren != null)
-            {
-                for (Widget child : nestedChildren)
-                {
-                    dumpAutoFlipWidgetTree(label, child, out, depth + 1, maxDepth, count);
-                }
-            }
-        }
-        catch (Throwable ignored)
-        {
-        }
-    }
-
-    private void writeAutoFlipSellWidgetDumpTrace(String message)
-    {
-        try
-        {
-            java.nio.file.Path tracePath = java.nio.file.Paths.get(
-                System.getProperty("user.home"),
-                ".runelite",
-                "autoflip_sell_widget_dump.log"
-            );
-            java.nio.file.Files.createDirectories(tracePath.getParent());
-            String line = System.currentTimeMillis() + "|" + message + System.lineSeparator();
-            java.nio.file.Files.write(
-                tracePath,
-                line.getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                java.nio.file.StandardOpenOption.CREATE,
-                java.nio.file.StandardOpenOption.APPEND
-            );
-        }
-        catch (Exception ex)
-        {
-            logAutoFlipVerbose(
-                "AUTOFLIP_SELL_WIDGET_DUMP_FILE_TRACE_ERROR"
-                    + " type=" + ex.getClass().getSimpleName()
-                    + " message=" + ex.getMessage()
-            );
-        }
-    }
 
     private int readAutoFlipCurrentOrdinarySellPriceFromOffers()
     {
@@ -19495,7 +18248,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
     private void retryAutoFlipSetupSearchInjection(boolean forceSearchSeedOverwrite)
     {
-        // AUTOFLIP_PATCH_STATE4B_FORCE_SEARCH_SEED_OVERWRITE_V30
         AutoFlipBoardCard card = getAutoFlipSetupTargetBoardCard();
         if (card == null || card.getItemId() <= 0)
         {
@@ -19503,38 +18255,15 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             String pendingItemName = autoFlipPendingGuidedSetupItemName;
             if (pendingItemId > 0 && pendingItemName != null && !pendingItemName.trim().isEmpty())
             {
-                writeAutoFlipPostConfirmTrace(
-                    "AUTOFLIP_POST_CONFIRM_TRACE"
-                        + " phase=retry_search_injection_pending_fallback"
-                        + " item_id=" + pendingItemId
-                        + " item_name=" + safe(pendingItemName)
-                        + " force=" + forceSearchSeedOverwrite
-                );
                 injectAutoFlipGeSearchText(pendingItemName, pendingItemId, forceSearchSeedOverwrite);
                 return;
             }
 
-            writeAutoFlipPostConfirmTrace(
-                "AUTOFLIP_POST_CONFIRM_TRACE"
-                    + " phase=retry_search_injection_no_target"
-                    + " force=" + forceSearchSeedOverwrite
-                    + " last_slot=" + autoFlipLastNativeButtonSlotIndex
-                    + " last_item_id=" + autoFlipLastNativeButtonItemId
-            );
             return;
         }
 
-        writeAutoFlipPostConfirmTrace(
-            "AUTOFLIP_POST_CONFIRM_TRACE"
-                + " phase=retry_search_injection_target"
-                + " slot=" + card.getSlotIndex()
-                + " item_id=" + card.getItemId()
-                + " item_name=" + safe(card.getItemName())
-                + " force=" + forceSearchSeedOverwrite
-        );
         injectAutoFlipGeSearchText(card.getItemName(), card.getItemId(), forceSearchSeedOverwrite);
     }
-    // AUTOFLIP_PATCH_DYNAMIC_SEARCH_CHATBOX_ANCHOR_V1
     public Rectangle getAutoFlipGuidedSetupSearchInputBounds()
     {
         try
@@ -19733,8 +18462,6 @@ return found;
 
         return null;
     }
-
-    // AUTOFLIP_PATCH_DYNAMIC_SEARCH_CHATBOX_ANCHOR_V1
     public Rectangle getAutoFlipGuidedSetupSearchResultBounds()
     {
         try
@@ -19755,9 +18482,7 @@ return found;
 
     private void injectAutoFlipGeSearchText(String itemName, int itemId, boolean forceSearchSeedOverwrite)
     {
-        // AUTOFLIP_PATCH_DYNAMIC_SEARCH_CHATBOX_ANCHOR_V1
         // One-shot item-search seed: run the native GE search script with the full item name.
-        // AUTOFLIP_PATCH_STATE4B_FORCE_SEARCH_SEED_OVERWRITE_V30:
         // State 4b may force one overwrite of stale native previous-search display text.
         if (itemName == null || itemName.trim().isEmpty() || itemId <= 0)
         {
@@ -19778,26 +18503,11 @@ return found;
                     return;
                 }
 
-                writeAutoFlipPostConfirmTrace(
-                    "AUTOFLIP_POST_CONFIRM_TRACE"
-                        + " phase=ge_search_seed_task_start"
-                        + " item_id=" + requestedItemId
-                        + " full_text=" + safe(value)
-                        + " force=" + forceSeedOverwrite
-                        + " active_seq=" + autoFlipGeSearchInjectSeq
-                );
 
                 net.runelite.api.widgets.Widget promptWidget = client.getWidget(10616875);
                 net.runelite.api.widgets.Widget inputWidget = client.getWidget(10616876);
                 if (promptWidget == null || inputWidget == null)
                 {
-                    writeAutoFlipPostConfirmTrace(
-                        "AUTOFLIP_POST_CONFIRM_TRACE"
-                            + " phase=ge_search_seed_missing_widget"
-                            + " item_id=" + requestedItemId
-                            + " prompt_present=" + (promptWidget != null)
-                            + " input_present=" + (inputWidget != null)
-                    );
                     return;
                 }
 
@@ -19813,14 +18523,6 @@ return found;
                         "price for each item"
                     );
 
-                writeAutoFlipPostConfirmTrace(
-                    "AUTOFLIP_POST_CONFIRM_TRACE"
-                        + " phase=ge_search_seed_prompt_scan"
-                        + " item_id=" + requestedItemId
-                        + " prompt_text=" + safe(promptText)
-                        + " quantity_or_price_prompt_visible=" + quantityOrPricePromptVisible
-                        + " force=" + forceSeedOverwrite
-                );
 
                 String lowerFull = value.toLowerCase(java.util.Locale.ROOT);
                 String currentInputText = cleanWidgetText(inputWidget.getText()).toLowerCase(java.util.Locale.ROOT);
@@ -19830,13 +18532,6 @@ return found;
                     && value.equals(autoFlipItemSearchSeededText)
                     && currentInputText.contains(lowerFull))
                 {
-                    writeAutoFlipPostConfirmTrace(
-                        "AUTOFLIP_POST_CONFIRM_TRACE"
-                            + " phase=ge_search_seed_already_seeded"
-                            + " item_id=" + requestedItemId
-                            + " seed_text=" + safe(value)
-                            + " current_input=" + safe(currentInputText)
-                    );
                     return;
                 }
 
@@ -19844,26 +18539,12 @@ return found;
                 // never fight them by writing it again.
                 if (currentInputText.contains(lowerFull))
                 {
-                    writeAutoFlipPostConfirmTrace(
-                        "AUTOFLIP_POST_CONFIRM_TRACE"
-                            + " phase=ge_search_seed_full_text_already_visible"
-                            + " item_id=" + requestedItemId
-                            + " current_input=" + safe(currentInputText)
-                            + " force=" + forceSeedOverwrite
-                    );
                     return;
                 }
 
                 Object[] scriptArgs = inputWidget.getOnKeyListener();
                 if (scriptArgs == null)
                 {
-                    writeAutoFlipPostConfirmTrace(
-                        "AUTOFLIP_POST_CONFIRM_TRACE"
-                            + " phase=ge_search_seed_missing_key_listener"
-                            + " item_id=" + requestedItemId
-                            + " full_text=" + safe(value)
-                            + " force=" + forceSeedOverwrite
-                    );
                     return;
                 }
 
@@ -19877,16 +18558,6 @@ return found;
                 autoFlipLastGeSearchInjectedText = value;
                 autoFlipLastGeSearchInjectedAtMs = System.currentTimeMillis();
 
-                writeAutoFlipPostConfirmTrace(
-                    "AUTOFLIP_POST_CONFIRM_TRACE"
-                        + " phase=ge_search_seed_applied"
-                        + " item_id=" + requestedItemId
-                        + " full_text=" + safe(value)
-                        + " seed_text=" + safe(value)
-                        + " native_script=true"
-                        + " force=" + forceSeedOverwrite
-                        + " input_widget_present=true"
-                );
 
                 if (isAutoFlipVerboseRuntimeLoggingEnabled())
                 {
@@ -19961,15 +18632,6 @@ return found;
                 if (!livePricePrompt)
                 {
                     String promptText = promptWidget == null ? "" : cleanWidgetText(promptWidget.getText());
-                    appendInjectionTrace(
-                        "blocked",
-                        source,
-                        "gp=" + value
-                            + " prompt=" + safe(promptText)
-                            + " prompt_widget=" + (promptWidget != null)
-                            + " input_widget=" + (inputWidget != null)
-                            + " live_prompt=" + livePricePrompt
-                    );
                     if (isAutoFlipVerboseRuntimeLoggingEnabled())
                     {
                         logAutoFlipVerbose(
@@ -19997,14 +18659,6 @@ return found;
                     inputWidget.revalidate();
                 }
 
-                appendInjectionTrace(
-                    "applied",
-                    source,
-                    "gp=" + value
-                        + " live_prompt=" + livePricePrompt
-                        + " prompt_text=" + safe(cleanWidgetText(promptWidget.getText()))
-                        + " input_widget=" + (inputWidget != null)
-                );
                 if (isAutoFlipVerboseRuntimeLoggingEnabled())
                 {
                     logAutoFlipVerbose("AUTOFLIP_PRICE_CHATBOX_INJECT_APPLIED gp=" + value + " inputWidget=" + (inputWidget != null));
@@ -21351,7 +20005,7 @@ return found;
                 return "state_3_recommendations_populated";
             }
 
-            return "state_2_plugin_enabled_empty_not_optimized";
+            return "state_2_plugin_enabled_empty_no_board";
         }
         catch (Throwable error)
         {
@@ -21400,73 +20054,6 @@ return found;
         {
             logAutoFlipUiError("isAutoFlipOrdinarySellSetupOpenForOverlay", error);
             return false;
-        }
-    }
-
-    public String getAutoFlipStateDetectorDebugForOverlay()
-    {
-        // AUTOFLIP_STATE_DETECTOR_LABEL_V7_DEBUG_METHOD
-        try
-        {
-            AutoFlipBoardCard target = getAutoFlipSetupTargetBoardCard();
-            String promptText = getAutoFlipStateDetectorActiveNativePromptText();
-            String promptShort = promptText == null ? "" : promptText;
-            if (promptShort.length() > 36)
-            {
-                promptShort = promptShort.substring(0, 36);
-            }
-            int ordinarySellItemId = autoFlipOrdinarySellSetupItemId;
-            String ordinarySellItemName = autoFlipOrdinarySellSetupItemName == null ? "" : autoFlipOrdinarySellSetupItemName;
-            long ordinarySellCachedPrice = getAutoFlipCachedSellPriceGp(ordinarySellItemId);
-            int ordinarySellCurrentPrice = autoFlipOrdinarySellCurrentPriceGp;
-            String ordinarySellCurrentPriceText = autoFlipOrdinarySellCurrentPriceText == null ? "" : autoFlipOrdinarySellCurrentPriceText;
-            boolean ordinarySellPriceMatches = ordinarySellItemId > 0
-                && ordinarySellCachedPrice > 0L
-                && ordinarySellCurrentPrice > 0
-                && ordinarySellCurrentPrice == ordinarySellCachedPrice;
-            boolean ordinarySellPricePromptOpen = isAutoFlipOrdinarySellPricePromptOpenForOverlayInternal();
-            boolean ordinarySellSetupOpen = isAutoFlipOrdinarySellSetupOpenForOverlay();
-            StringBuilder debug = new StringBuilder();
-            debug.append("prompt=").append(promptShort);
-            debug.append(" sellItemId=").append(ordinarySellItemId);
-            debug.append(" sellItemName=").append(ordinarySellItemName);
-            debug.append(" sellCacheGp=").append(ordinarySellCachedPrice);
-            debug.append(" currentSetPrice=").append(ordinarySellCurrentPrice);
-            if (!ordinarySellCurrentPriceText.isEmpty())
-            {
-                debug.append(" currentSetPriceText=").append(ordinarySellCurrentPriceText);
-            }
-            if (!autoFlipOrdinarySellCurrentPriceSource.isEmpty())
-            {
-                debug.append(" visiblePriceSource=").append(autoFlipOrdinarySellCurrentPriceSource);
-            }
-            debug.append(" pricePrompt=").append(ordinarySellPricePromptOpen);
-            debug.append(" setupOpen=").append(ordinarySellSetupOpen);
-            debug.append(" priceMatch=").append(ordinarySellPriceMatches);
-
-            if (target == null)
-            {
-                debug.append(" target=none");
-                return debug.toString();
-            }
-
-            long expectedQty = target.getQuantity();
-            long expectedPrice = getAutoFlipBoardCardExpectedSetupPrice(target);
-            boolean quantityCorrect = isAutoFlipStateDetectorQuantityFieldCorrect(target);
-            boolean priceCorrect = isAutoFlipStateDetectorPriceFieldCorrect(target);
-            boolean previousSearch = autoFlipStateDetectorVisibleTextContainsAnyStrict("previous search:");
-
-            debug.append(" prev=").append(previousSearch);
-            debug.append(" qExp=").append(expectedQty);
-            debug.append(" qOk=").append(quantityCorrect);
-            debug.append(" pExp=").append(expectedPrice);
-            debug.append(" pOk=").append(priceCorrect);
-            return debug.toString();
-        }
-        catch (Throwable error)
-        {
-            logAutoFlipUiError("getAutoFlipStateDetectorDebugForOverlay", error);
-            return "debug=error";
         }
     }
 
