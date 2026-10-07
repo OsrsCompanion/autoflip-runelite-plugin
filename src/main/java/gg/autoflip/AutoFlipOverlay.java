@@ -29,24 +29,17 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 
 public class AutoFlipOverlay extends Overlay
 {
+    // AUTOFLIP_PATCH_SETUP_LOGO_TAGLINE_ASSETS_V1
     private java.awt.image.BufferedImage autoFlipSetupLogoAssetImage;
     private java.awt.image.BufferedImage autoFlipSetupTaglineAssetImage;
     private java.awt.image.BufferedImage autoFlipSetupQuantityHintPanelAssetImage;
     private java.awt.image.BufferedImage autoFlipSetupPriceInputFrameAssetImage;
     private java.awt.image.BufferedImage autoFlipSetupQuantityInputFrameAssetImage;
+    // AUTOFLIP_PATCH_SETUP_UI_ASSETS_LOGO_RENDER_V1_FIELDS
     private transient java.awt.image.BufferedImage autoFlipSetupLogoWatermarkImage;
     private transient boolean autoFlipSetupLogoWatermarkLoadAttempted;
     private static final String LOGO_RESOURCE = "/gg/autoflip/AppIcon_GeButton24.png";
     private static final String MARKET_LINK_ICON_RESOURCE = "/gg/autoflip/AppIcon_Favicon4.png";
-    private static final String HEADER_BRAND_RESOURCE = "/autoflip/setup_ui/images/autoflip-gg-custom-transparent.png";
-    private static final Path AUTOFLIP_PLUGIN_DATA_DIR = Paths.get(
-        System.getProperty("user.home", "."),
-        ".runelite",
-        "plugin-data",
-        "autoflip"
-    );
-    private static final Path OVERLAY_DEV_CONFIG_PATH = AUTOFLIP_PLUGIN_DATA_DIR.resolve("overlay_dev_config.properties");
-    private static final Path LOCAL_OVERLAY_DEV_CONFIG_PATH = Paths.get("_runtime", "overlay_dev_config.properties");
 
     private static final PlanCard[] PLACEHOLDER_PLAN = new PlanCard[]
     {
@@ -151,6 +144,8 @@ public class AutoFlipOverlay extends Overlay
             plugin.clearAutoFlipGeMarketLinkBounds();
             return null;
         }
+
+        // AUTOFLIP_PATCH_SETUP_UI_BUTTON_HISTORY_V1
         if (active)
         {
             int uiWidth = config.getInt("setup.ui.button.w", 30);
@@ -203,10 +198,12 @@ public class AutoFlipOverlay extends Overlay
                 && (guidedSetup || ordinarySellPrice))
             {
                 // AUTOFLIP_GE_SETUP_MODE_PROBE_RENDER_V1
+                // AUTOFLIP_PATCH_Q3_MINIMAL_SETUP_GATE_V1
                 // AUTOFLIP_GUIDED_SETUP_FLOW_DRAW_CALL_V14
                 drawAutoFlipGuidedSetupFlowOverlay(graphics, header);
                 if (guidedSetup)
                 {
+                    // AUTOFLIP_PATCH_SETUP_UI_ASSETS_LOGO_RENDER_V1_CALL
                     drawAutoFlipSetupUiLogoAsset(graphics, header);
                 }
             }
@@ -231,7 +228,9 @@ public class AutoFlipOverlay extends Overlay
             plugin.maybeRefreshAutoFlipBoardCache();
             if (!autoFlipSetupWindowForControls)
             {
+                // AUTOFLIP_PATCH_N1_LINE_MAIN_GRID_ONLY_BOARD_SUMMARY_V1
                 drawStaticGhostCards(graphics);
+                // AUTOFLIP_PATCH_M_FINAL_TINY_SUMMARY_CALL_V1
                 drawAutoFlipBoardSummaryStrip(graphics);
             }
                 if (config.editModeEnabled())
@@ -243,6 +242,8 @@ public class AutoFlipOverlay extends Overlay
                     drawExplanationPanel(graphics, header);
                 }
         }
+
+        // AUTOFLIP_PATCH_AH2_DRAW_TOGGLE_AFTER_CARDS_V1
         // Draw the normal toggle again after menu/cards so active offer cards cannot cover the logo.
         drawButton(graphics, buttonX, buttonY, buttonSize, active);
 
@@ -312,6 +313,163 @@ public class AutoFlipOverlay extends Overlay
         }
     }
 
+    private void drawGeSetupModeProbe(Graphics2D graphics, Rectangle header, String geTitle)
+    {
+        if (graphics == null || header == null)
+        {
+            return;
+        }
+
+        // AUTOFLIP_GE_SETUP_ITEM_TARGET_V1
+        // AUTOFLIP_PATCH_J_SETUP_USES_REMEMBERED_NATIVE_SLOT_V1
+        AutoFlipPlugin.AutoFlipBoardCard card = plugin.getAutoFlipSetupTargetBoardCard();
+        boolean sellPlan = card != null && isAutoFlipSellPlan(card.getReason(), card.getItemName());
+
+        Color primary = sellPlan ? new Color(80, 170, 255, 245) : new Color(80, 255, 120, 245);
+        Color fill = sellPlan ? new Color(20, 52, 92, 88) : new Color(18, 92, 38, 88);
+
+        Rectangle itemBox = new Rectangle(
+            header.x + config.getInt("setup.item.icon.x", 56),
+            header.y + config.getInt("setup.item.icon.y", 48),
+            config.getInt("setup.item.icon.w", 44),
+            config.getInt("setup.item.icon.h", 44)
+        );
+
+        Rectangle quickBox = new Rectangle(
+            header.x + config.getInt("setup.quick.x", 295),
+            header.y + config.getInt("setup.quick.y", 186),
+            config.getInt("setup.quick.w", 62),
+            config.getInt("setup.quick.h", 28)
+        );
+
+        // AUTOFLIP_PATCH_V_RESTORE_QUANTITY_SETUP_QUICK_BOX_V1
+        Rectangle quantityQuickBox = new Rectangle(
+            header.x + config.getInt("setup.quantity.quick.x", 178),
+            header.y + config.getInt("setup.quantity.quick.y", 186),
+            config.getInt("setup.quantity.quick.w", 62),
+            config.getInt("setup.quantity.quick.h", 28)
+        );
+
+        Rectangle confirmBox = new Rectangle(
+            header.x + config.getInt("setup.confirm.x", 172),
+            header.y + config.getInt("setup.confirm.y", 251),
+            config.getInt("setup.confirm.w", 164),
+            config.getInt("setup.confirm.h", 40)
+        );
+
+        if (config.editModeEnabled())
+        {
+            // AUTOFLIP_SETUP_ITEM_TARGET_EDIT_DRAW_V1
+            drawNativeHoleEditHandle(graphics, "ITEM", itemBox, primary);
+
+            // AUTOFLIP_SETUP_QUICK_SET_EDIT_DRAW_V1
+            drawNativeHoleEditHandle(graphics, "QUICK", quickBox, primary);
+
+            // AUTOFLIP_SETUP_CONFIRM_EDIT_DRAW_V1
+            drawNativeHoleEditHandle(graphics, "CONFIRM", confirmBox, primary);
+        }
+
+        Stroke oldStroke = graphics.getStroke();
+        Font oldFont = graphics.getFont();
+        Color oldColor = graphics.getColor();
+
+        // AUTOFLIP_PATCH_V_RESTORE_QUANTITY_SETUP_QUICK_DRAW_V1
+        graphics.setColor(new Color(primary.getRed(), primary.getGreen(), primary.getBlue(), 48));
+        graphics.fillRoundRect(quantityQuickBox.x - 3, quantityQuickBox.y - 3, quantityQuickBox.width + 6, quantityQuickBox.height + 6, 8, 8);
+        graphics.setStroke(new BasicStroke(2.0f));
+        graphics.setColor(primary);
+        graphics.drawRoundRect(quantityQuickBox.x - 2, quantityQuickBox.y - 2, quantityQuickBox.width + 4, quantityQuickBox.height + 4, 8, 8);
+
+        graphics.setColor(new Color(primary.getRed(), primary.getGreen(), primary.getBlue(), 48));
+        graphics.fillRoundRect(itemBox.x - 7, itemBox.y - 7, itemBox.width + 14, itemBox.height + 14, 12, 12);
+
+        graphics.setColor(fill);
+        graphics.fillRoundRect(itemBox.x - 3, itemBox.y - 3, itemBox.width + 6, itemBox.height + 6, 10, 10);
+
+        graphics.setStroke(new BasicStroke(2.4f));
+        graphics.setColor(primary);
+        graphics.drawRoundRect(itemBox.x - 4, itemBox.y - 4, itemBox.width + 8, itemBox.height + 8, 10, 10);
+
+        graphics.setStroke(new BasicStroke(1.2f));
+        graphics.setColor(new Color(255, 245, 190, 210));
+        graphics.drawRoundRect(itemBox.x, itemBox.y, itemBox.width, itemBox.height, 8, 8);
+
+        String label = "Select item";
+
+        if (card != null)
+        {
+            if (card.getItemName() != null && !card.getItemName().isEmpty())
+            {
+                label = "Select: " + card.getItemName();
+            }
+
+            BufferedImage image = plugin.getAutoFlipInventoryItemImage(card.getItemId());
+            if (image != null)
+            {
+                int drawX = itemBox.x + ((itemBox.width - image.getWidth()) / 2);
+                int drawY = itemBox.y + ((itemBox.height - image.getHeight()) / 2);
+                graphics.drawImage(image, drawX, drawY, null);
+            }
+        }
+
+        graphics.setFont(oldFont.deriveFont(Font.BOLD, 11.0f));
+        graphics.setColor(new Color(0, 0, 0, 150));
+        graphics.drawString(label, itemBox.x + itemBox.width + 9, itemBox.y + 16 + 1);
+        graphics.setColor(new Color(238, 229, 196, 255));
+        graphics.drawString(label, itemBox.x + itemBox.width + 8, itemBox.y + 16);
+
+        // AUTOFLIP_SETUP_QUICK_SET_BOX_V1
+        graphics.setColor(new Color(0, 0, 0, 130));
+        graphics.fillRoundRect(quickBox.x + 2, quickBox.y + 2, quickBox.width, quickBox.height, 7, 7);
+        graphics.setColor(fill);
+        graphics.fillRoundRect(quickBox.x, quickBox.y, quickBox.width, quickBox.height, 7, 7);
+        graphics.setStroke(new BasicStroke(2.0f));
+        graphics.setColor(primary);
+        graphics.drawRoundRect(quickBox.x, quickBox.y, quickBox.width, quickBox.height, 7, 7);
+
+        graphics.setFont(oldFont.deriveFont(Font.BOLD, quickBox.height >= 32 ? 12.0f : 10.0f));
+        FontMetrics quickMetrics = graphics.getFontMetrics();
+        // AUTOFLIP_BLANK_QUICK_SET_TEXT_V1
+                String quickLabel = "Qty " + Math.max(1, card.getQuantity());
+                graphics.setColor(new Color(255, 245, 190, 255));
+                graphics.drawString(
+                        quickLabel,
+            quickBox.x + ((quickBox.width - quickMetrics.stringWidth(quickLabel)) / 2),
+            quickBox.y + ((quickBox.height - quickMetrics.getHeight()) / 2) + quickMetrics.getAscent()
+        );
+
+        // AUTOFLIP_SETUP_CONFIRM_BOX_V1
+        graphics.setColor(new Color(0, 0, 0, 145));
+        graphics.fillRoundRect(confirmBox.x + 3, confirmBox.y + 3, confirmBox.width, confirmBox.height, 8, 8);
+        graphics.setColor(fill);
+        graphics.fillRoundRect(confirmBox.x, confirmBox.y, confirmBox.width, confirmBox.height, 8, 8);
+        graphics.setStroke(new BasicStroke(2.2f));
+        graphics.setColor(primary);
+        graphics.drawRoundRect(confirmBox.x, confirmBox.y, confirmBox.width, confirmBox.height, 8, 8);
+
+        Image logo = getCardWebsiteButtonImage();
+        int textShift = 0;
+        if (logo != null)
+        {
+            int s = Math.min(24, Math.max(16, confirmBox.height - 10));
+            graphics.drawImage(logo, confirmBox.x + 8, confirmBox.y + ((confirmBox.height - s) / 2), s, s, null);
+            textShift = 12;
+        }
+
+        graphics.setFont(oldFont.deriveFont(Font.BOLD, confirmBox.height >= 36 ? 14.0f : 11.0f));
+        FontMetrics confirmMetrics = graphics.getFontMetrics();
+        String confirmLabel = sellPlan ? "Confirm Sell" : "Confirm Buy";
+        graphics.setColor(new Color(255, 245, 190, 255));
+        graphics.drawString(
+            confirmLabel,
+            confirmBox.x + ((confirmBox.width - confirmMetrics.stringWidth(confirmLabel)) / 2) + textShift,
+            confirmBox.y + ((confirmBox.height - confirmMetrics.getHeight()) / 2) + confirmMetrics.getAscent()
+        );
+
+        graphics.setStroke(oldStroke);
+        graphics.setFont(oldFont);
+        graphics.setColor(oldColor);
+    }
     private void drawReadyToSellInventoryNotifier(Graphics2D graphics)
     {
         java.util.List<AutoFlipPlugin.AutoFlipInventoryItem> readyItems = plugin.getAutoFlipReadyToSellInventorySnapshot();
@@ -816,6 +974,16 @@ public class AutoFlipOverlay extends Overlay
                         card.getRiskLabel(),
                         itemAllowedForAccount))
                 {
+                    if (plugin.isAutoFlipVerboseRuntimeLoggingEnabled())
+                    {
+                        System.out.println(
+                            "AUTOFLIP_BOARD_RENDER_SKIP"
+                                + " reason=slot_unavailable"
+                                + " slot=" + card.getSlotIndex()
+                                + " item_id=" + card.getItemId()
+                                + " rendered_index=" + rendered
+                        );
+                    }
                     continue;
                 }
 
@@ -823,6 +991,16 @@ public class AutoFlipOverlay extends Overlay
 
                 if (slotBounds == null)
                 {
+                    if (plugin.isAutoFlipVerboseRuntimeLoggingEnabled())
+                    {
+                        System.out.println(
+                            "AUTOFLIP_BOARD_RENDER_SKIP"
+                                + " reason=missing_slot_bounds"
+                                + " slot=" + card.getSlotIndex()
+                                + " item_id=" + card.getItemId()
+                                + " rendered_index=" + rendered
+                        );
+                    }
                     continue;
                 }
 
@@ -840,6 +1018,8 @@ public class AutoFlipOverlay extends Overlay
                 int cardHeight = config.cardHeight();
                 boolean sellPlan = isAutoFlipSellPlan(card.getReason(), card.getItemName());
                 Rectangle nativeButtonHole = getAutoFlipNativeButtonHole(cardX, cardY, cardWidth, cardHeight, sellPlan);
+
+                // AUTOFLIP_PATCH_H_TRUE_PANEL_CUTOUT_V1
                 // Do not draw a peer-through box. Instead, do not paint the ghost panel
                 // inside the native Buy/Sell button hole at all.
                 java.awt.Shape oldClip = graphics.getClip();
@@ -1252,6 +1432,8 @@ public class AutoFlipOverlay extends Overlay
         int midX = panelX + (panelW / 2);
         graphics.setColor(new Color(197, 138, 29, 150));
         graphics.drawLine(midX, panelY + 6, midX, panelY + panelH - 6);
+
+        // AUTOFLIP_PATCH_M_WRITEONLY_DRAW_BOARD_SUMMARY_V1
         long budgetLimit = plugin.getAutoFlipOverlayBudgetGp();
 
         graphics.setFont(oldFont.deriveFont(Font.PLAIN, 9.0f));
@@ -1424,6 +1606,7 @@ public class AutoFlipOverlay extends Overlay
         try
         {
             // AUTOFLIP_NATIVE_HOLE_EDIT_HANDLE_HELPER_V1
+            // AUTOFLIP_PATCH_G_TRANSPARENT_NATIVE_BOXES_V1
             // Outline only: do not paint a filled green/blue rectangle over the native GE button.
             graphics.setStroke(new BasicStroke(2.0f));
             graphics.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 210));
@@ -1531,6 +1714,7 @@ public class AutoFlipOverlay extends Overlay
 
     private void clearAutoFlipNativeButtonHole(Graphics2D graphics, Rectangle hole, boolean sellPlan)
     {
+        // AUTOFLIP_PATCH_H_CLEAR_WINDOW_DISABLED_V1
         // Disabled: transparent cutout is now created by clipping before drawGhostCard().
         // Drawing or clearing after the card paint causes black/colored artifacts on RuneLite's frame graphics.
         return;
@@ -1542,8 +1726,12 @@ public class AutoFlipOverlay extends Overlay
 
     private void drawGhostCard(Graphics2D graphics, int x, int y, PlanCard cardData, int itemId)
     {
+        // AUTOFLIP_PATCH_I_REAL_ITEM_ICONS_BY_ID_V1
         int cardWidth = config.cardWidth();
         int cardHeight = config.cardHeight();
+
+        // AUTOFLIP_PATCH_K_GE_BROWN_GHOST_PANEL_V1
+        // AUTOFLIP_PATCH_L_GE_SLOT_MATCH_COLOR_V1
         // Keep the ghost card opaque/click-blocking, but visually match the native GE empty-slot panel.
         Color shadow = new Color(66, 61, 50, 20);
         // AUTOFLIP_OPAQUE_SLOT_MASK_V1
@@ -1583,6 +1771,8 @@ public class AutoFlipOverlay extends Overlay
         int iconX = x + config.cardIconX();
         int iconY = y + AutoFlipCardLayout.raisedY(config.cardIconY());
         int iconSize = config.cardIconSize();
+
+        // AUTOFLIP_PATCH_J_REMOVE_ICON_GLOW_V1
         // Removed orange/colored circle behind the item icon. Keep only the icon box.
 
         graphics.setColor(new Color(67, 61, 49, 190));
@@ -1736,7 +1926,21 @@ public class AutoFlipOverlay extends Overlay
                 }
             }
 
-            return null;
+            // Local development fallback for older unpacked workspaces.
+            Path iconPath = Paths.get("C:\\osrs-flip-assistant\\ProjectPhotos\\Logos\\AppIcon_Favicon4.png");
+            if (!Files.exists(iconPath))
+            {
+                return null;
+            }
+
+            BufferedImage image = ImageIO.read(iconPath.toFile());
+            if (image == null)
+            {
+                return null;
+            }
+            BufferedImage cropped = cropTransparentPadding(image);
+            cardWebsiteButtonImage = cropped == null ? image : cropped;
+            return cardWebsiteButtonImage;
         }
         catch (Exception ignored)
         {
@@ -1862,6 +2066,7 @@ public class AutoFlipOverlay extends Overlay
         return fallback;
     }
     // AUTOFLIP_GUIDED_SETUP_FLOW_DRAW_METHOD_V14
+    // AUTOFLIP_PATCH_SETUP_PERSISTENT_HOLES_VISUAL_V2
     private void drawAutoFlipGuidedSetupFlowOverlay(Graphics2D graphics, Rectangle header)
     {
         if (graphics == null || plugin == null)
@@ -1900,12 +2105,14 @@ public class AutoFlipOverlay extends Overlay
             config.getInt("setup.item.result.w", 245),
             config.getInt("setup.item.result.h", 52)
         );
+        // AUTOFLIP_PATCH_SETUP_ITEM_SEARCH_HIGHLIGHT_ROUTING_V1_CHATBOX_RECT
         Rectangle itemSearchChatboxHole = new Rectangle(
             config.getInt("setup.item.search.chatbox.x", 84),
             config.getInt("setup.item.search.chatbox.y", Math.max(330, canvasHeight - 170)),
             config.getInt("setup.item.search.chatbox.w", 410),
             config.getInt("setup.item.search.chatbox.h", 26)
         );
+        // AUTOFLIP_PATCH_DYNAMIC_SEARCH_CHATBOX_ANCHOR_V1
         Rectangle liveItemSearchChatboxHole = plugin.getAutoFlipGuidedSetupSearchInputBounds();
         if (liveItemSearchChatboxHole != null && liveItemSearchChatboxHole.width > 0 && liveItemSearchChatboxHole.height > 0)
         {
@@ -1945,7 +2152,7 @@ public class AutoFlipOverlay extends Overlay
             config.getInt("setup.back.arrow.w", 43),
             config.getInt("setup.back.arrow.h", 42)
         );
-        Polygon backArrowHolePolygon = buildAutoFlipSetupBackArrowHole(backArrowHole);
+        Polygon backArrowHolePolygon = buildAutoFlipSetupBackArrowHole(backArrowHole); // AUTOFLIP_PATCH_SETUP_BACK_ARROW_POLYGON_HOLE_V1
 
         Rectangle itemDescriptionHole = new Rectangle(
             header.x + config.getInt("setup.item.description.x", 160),
@@ -2032,11 +2239,13 @@ public class AutoFlipOverlay extends Overlay
 
         try
         {
+            // AUTOFLIP_PATCH_SETUP_CUSTOM_UI_GATE_ONLY_V1
             // This gates only the custom GE setup overhaul visuals. The active green
             // guided workflow highlight stays outside this gate below.
             boolean customSetupUiEnabled = !ordinarySellPrice && plugin.isAutoFlipCustomSetupUiEnabledForOverlay();
             if (customSetupUiEnabled)
             {
+                // AUTOFLIP_PATCH_SETUP_FULL_COVER_VISUAL_V1
                             // Full setup-page visual cover. Holes are subtracted so the native
                             // GE controls/value fields remain visible underneath.
                             drawAutoFlipSetupFullCover(
@@ -2065,7 +2274,7 @@ public class AutoFlipOverlay extends Overlay
                             drawAutoFlipSetupPassiveHole(graphics, priceHole);
                             drawAutoFlipSetupPassiveHole(graphics, finalPriceHole);
                             drawAutoFlipSetupPassiveHole(graphics, confirmHole);
-                            drawAutoFlipSetupPassivePolygonHole(graphics, backArrowHolePolygon);
+                            drawAutoFlipSetupPassivePolygonHole(graphics, backArrowHolePolygon); // AUTOFLIP_PATCH_SETUP_BACK_ARROW_POLYGON_HOLE_V1
             }
 
             if (activeHole != null)
@@ -2075,6 +2284,7 @@ public class AutoFlipOverlay extends Overlay
 
             if (customSetupUiEnabled)
             {
+                // AUTOFLIP_PATCH_SETUP_CONFIRM_ITEM_FRAMES_V1_INLINE
                 try
                 {
                     if (config.getInt("setup.asset.buy.item.frame.enabled", 1) != 0)
@@ -2119,8 +2329,11 @@ public class AutoFlipOverlay extends Overlay
                 {
                     // Render-only confirm/item frame safety.
                 }
+                // AUTOFLIP_PATCH_SETUP_QUANTITY_INPUT_FRAME_ASSET_V1_CALL
                 drawAutoFlipSetupQuantityInputFrameAsset(graphics, header);
+                // AUTOFLIP_PATCH_SETUP_PRICE_INPUT_FRAME_ASSET_V1_CALL
                 drawAutoFlipSetupPriceInputFrameAsset(graphics, header);
+                // AUTOFLIP_PATCH_SETUP_GOLD_INFO_FRAMES_V4_INLINE
                 try
                 {
                     if (config.getInt("setup.asset.item.description.frame.enabled", 1) != 0)
@@ -2165,8 +2378,11 @@ public class AutoFlipOverlay extends Overlay
                 {
                     // Render-only asset safety.
                 }
+                // AUTOFLIP_PATCH_SETUP_QUANTITY_HINT_PANEL_ASSET_V3_CALL
                 drawAutoFlipSetupQuantityHintPanelAsset(graphics, header);
+                // AUTOFLIP_PATCH_SETUP_PRICE_HINT_PANEL_TEXT_V1_CALL
                 drawAutoFlipSetupPriceHintPanelAsset(graphics, header);
+                // AUTOFLIP_PATCH_SETUP_GOLD_RUNE_CONFIRM_BUY_ITEM_V1_INLINE
                 try
                 {
                     if (config.getInt("setup.asset.buy.item.gold.edge.enabled", 1) != 0)
@@ -2229,7 +2445,11 @@ public class AutoFlipOverlay extends Overlay
                             try
                             {
                                 java.util.Properties autoFlipConfirmProps = new java.util.Properties();
-                                java.nio.file.Path autoFlipConfirmPath = resolveOverlayDevConfigPath();
+                                java.nio.file.Path autoFlipConfirmPath = java.nio.file.Paths.get("_runtime", "overlay_dev_config.properties");
+                                if (!java.nio.file.Files.exists(autoFlipConfirmPath))
+                                {
+                                    autoFlipConfirmPath = java.nio.file.Paths.get("C:\\osrs-flip-assistant\\Plugin-Tinker\\_runtime\\overlay_dev_config.properties");
+                                }
                                 if (java.nio.file.Files.exists(autoFlipConfirmPath))
                                 {
                                     try (java.io.Reader autoFlipConfirmReader = java.nio.file.Files.newBufferedReader(autoFlipConfirmPath, java.nio.charset.StandardCharsets.UTF_8))
@@ -2267,6 +2487,8 @@ public class AutoFlipOverlay extends Overlay
                 {
                     // Render-only asset safety.
                 }
+                // AUTOFLIP_PATCH_SETUP_GOLD_RUNE_CONFIRM_BUY_ITEM_V1_END
+                // AUTOFLIP_PATCH_SETUP_REVIEW_MESSAGE_TEXT_V3_INLINE
                 if (config.getInt("setup.review.message.text.enabled", 1) != 0)
                 {
                     Font autoFlipReviewOldFont = graphics.getFont();
@@ -2277,7 +2499,11 @@ public class AutoFlipOverlay extends Overlay
                         try
                         {
                             java.util.Properties autoFlipReviewProps = new java.util.Properties();
-                            java.nio.file.Path autoFlipReviewPath = resolveOverlayDevConfigPath();
+                            java.nio.file.Path autoFlipReviewPath = java.nio.file.Paths.get("_runtime", "overlay_dev_config.properties");
+                            if (!java.nio.file.Files.exists(autoFlipReviewPath))
+                            {
+                                autoFlipReviewPath = java.nio.file.Paths.get("C:\\osrs-flip-assistant\\Plugin-Tinker\\_runtime\\overlay_dev_config.properties");
+                            }
                             if (java.nio.file.Files.exists(autoFlipReviewPath))
                             {
                                 try (java.io.Reader autoFlipReviewReader = java.nio.file.Files.newBufferedReader(autoFlipReviewPath, java.nio.charset.StandardCharsets.UTF_8))
@@ -2314,7 +2540,7 @@ public class AutoFlipOverlay extends Overlay
                         graphics.setColor(autoFlipReviewOldColor);
                     }
                 }
-                drawAutoFlipSetupReplacementLabels(graphics, header, oldFont);
+                drawAutoFlipSetupReplacementLabels(graphics, header, oldFont); // AUTOFLIP_PATCH_SETUP_COVER_BG_LABELS_V1
             }
         }
         catch (Throwable ignored)
@@ -2328,6 +2554,8 @@ public class AutoFlipOverlay extends Overlay
             graphics.setStroke(oldStroke);
         }
     }
+
+    // AUTOFLIP_PATCH_SETUP_COVER_BG_LABELS_V1
     private void drawAutoFlipSetupReplacementLabels(Graphics2D graphics, Rectangle header, Font baseFont)
     {
         if (graphics == null || header == null)
@@ -2356,6 +2584,8 @@ public class AutoFlipOverlay extends Overlay
                 header.x + config.getInt("setup.label.price.x", 306),
                 header.y + config.getInt("setup.label.price.y", 143)
             );
+
+            // AUTOFLIP_PATCH_SETUP_QUANTITY_HINT_TEXT_VISIBLE_V1
             if (config.getInt("setup.hint.quantity.enabled", 1) != 0)
             {
                 graphics.setFont(drawFont.deriveFont(Font.BOLD, (float) config.getInt("setup.hint.font.size", 9)));
@@ -2365,6 +2595,7 @@ public class AutoFlipOverlay extends Overlay
                     config.getInt("setup.hint.color.b", 142),
                     config.getInt("setup.hint.color.a", 245)
                 ));
+                                // AUTOFLIP_PATCH_SETUP_QUANTITY_HINT_TEXT_CONFIG_V2
                 String quantityHintText = "AutoFlip enters exact quantity";
                 try
                 {
@@ -2379,7 +2610,7 @@ public class AutoFlipOverlay extends Overlay
                 {
                     try
                     {
-                        java.nio.file.Path path = resolveOverlayDevConfigPath();
+                        java.nio.file.Path path = java.nio.file.Paths.get("C:\\osrs-flip-assistant\\Plugin-Tinker\\_runtime\\overlay_dev_config.properties");
                         java.util.Properties props = new java.util.Properties();
                         try (java.io.Reader reader = java.nio.file.Files.newBufferedReader(path, java.nio.charset.StandardCharsets.UTF_8))
                         {
@@ -2402,6 +2633,8 @@ public class AutoFlipOverlay extends Overlay
                     header.y + config.getInt("setup.hint.quantity.y", 193)
                 );
             }
+ 
+            // AUTOFLIP_PATCH_SETUP_PRICE_HINT_TEXT_VISIBLE_V1
             if (config.getInt("setup.hint.price.enabled", 1) != 0)
             {
                 graphics.setFont(drawFont.deriveFont(Font.BOLD, (float) config.getInt("setup.hint.font.size", 12)));
@@ -2411,10 +2644,10 @@ public class AutoFlipOverlay extends Overlay
                     config.getInt("setup.hint.color.b", 142),
                     config.getInt("setup.hint.color.a", 245)
                 ));
-                String priceHintText = "AutoFlip enters suggested price";
+                String priceHintText = "AutoFlip enters optimized price";
                 try
                 {
-                    java.nio.file.Path path = resolveOverlayDevConfigPath();
+                    java.nio.file.Path path = java.nio.file.Paths.get("C:\\osrs-flip-assistant\\Plugin-Tinker\\_runtime\\overlay_dev_config.properties");
                     if (java.nio.file.Files.exists(path))
                     {
                         java.util.Properties props = new java.util.Properties();
@@ -2444,6 +2677,7 @@ public class AutoFlipOverlay extends Overlay
             graphics.setColor(oldColor);
         }
     }
+    // AUTOFLIP_PATCH_SETUP_FULL_COVER_VISUAL_V1
     private void drawAutoFlipSetupFullCover(Graphics2D graphics, Rectangle cover, java.awt.Shape... holes)
     {
         if (graphics == null || cover == null || cover.width <= 0 || cover.height <= 0)
@@ -2486,6 +2720,8 @@ public class AutoFlipOverlay extends Overlay
                     coveredArea.subtract(holeArea);
                 }
             }
+
+                        // AUTOFLIP_PATCH_SETUP_COVER_BG_LABELS_V1
             graphics.setColor(new Color(
                 config.getInt("setup.cover.bg.r", 43),
                 config.getInt("setup.cover.bg.g", 35),
@@ -2510,6 +2746,11 @@ public class AutoFlipOverlay extends Overlay
             graphics.setStroke(oldStroke);
         }
     }
+    // AUTOFLIP_PATCH_SETUP_UI_ASSETS_LOGO_RENDER_V1_METHOD
+    // AUTOFLIP_PATCH_SETUP_UI_ASSETS_LOGO_RENDER_V1_METHOD
+
+    // AUTOFLIP_PATCH_SETUP_LOGO_TAGLINE_ASSETS_V1
+        // AUTOFLIP_PATCH_SETUP_PRICE_HINT_PANEL_TEXT_V1_METHOD
     private void drawAutoFlipSetupPriceHintPanelAsset(Graphics2D graphics, Rectangle header)
     {
         if (graphics == null || header == null)
@@ -2544,6 +2785,7 @@ public class AutoFlipOverlay extends Overlay
         {
         }
     }
+// AUTOFLIP_PATCH_SETUP_QUANTITY_HINT_PANEL_ASSET_V3_METHOD
     private java.awt.image.BufferedImage getAutoFlipSetupQuantityHintPanelImage()
     {
         if (autoFlipSetupQuantityHintPanelAssetImage != null)
@@ -2565,6 +2807,8 @@ public class AutoFlipOverlay extends Overlay
             return null;
         }
     }
+
+    // AUTOFLIP_PATCH_SETUP_QUANTITY_HINT_PANEL_ASSET_V3_METHOD
     private void drawAutoFlipSetupQuantityHintPanelAsset(Graphics2D graphics, Rectangle header)
     {
         if (graphics == null || header == null)
@@ -2594,6 +2838,7 @@ public class AutoFlipOverlay extends Overlay
         );
         drawAutoFlipSetupImageAsset(graphics, image, box, config.getInt("setup.asset.quantity.hint.bg.alpha", 96), true);
     }
+    // AUTOFLIP_PATCH_SETUP_PRICE_INPUT_FRAME_ASSET_V1_METHOD
     private java.awt.image.BufferedImage getAutoFlipSetupPriceInputFrameImage()
     {
         if (autoFlipSetupPriceInputFrameAssetImage != null)
@@ -2615,6 +2860,8 @@ public class AutoFlipOverlay extends Overlay
             return null;
         }
     }
+
+    // AUTOFLIP_PATCH_SETUP_PRICE_INPUT_FRAME_ASSET_V1_METHOD
     private void drawAutoFlipSetupPriceInputFrameAsset(Graphics2D graphics, Rectangle header)
     {
         if (graphics == null || header == null)
@@ -2644,6 +2891,7 @@ public class AutoFlipOverlay extends Overlay
         );
         drawAutoFlipSetupImageAsset(graphics, image, box, config.getInt("setup.asset.price.input.frame.alpha", 96), true);
     }
+    // AUTOFLIP_PATCH_SETUP_QUANTITY_INPUT_FRAME_ASSET_V1_METHOD
     private java.awt.image.BufferedImage getAutoFlipSetupQuantityInputFrameImage()
     {
         if (autoFlipSetupQuantityInputFrameAssetImage != null)
@@ -2665,6 +2913,8 @@ public class AutoFlipOverlay extends Overlay
             return null;
         }
     }
+
+    // AUTOFLIP_PATCH_SETUP_QUANTITY_INPUT_FRAME_ASSET_V1_METHOD
     private void drawAutoFlipSetupQuantityInputFrameAsset(Graphics2D graphics, Rectangle header)
     {
         if (graphics == null || header == null)
@@ -2715,6 +2965,8 @@ public class AutoFlipOverlay extends Overlay
             return null;
         }
     }
+
+    // AUTOFLIP_PATCH_SETUP_LOGO_TAGLINE_ASSETS_V1
     private java.awt.image.BufferedImage getAutoFlipSetupTaglineImage()
     {
         if (autoFlipSetupTaglineAssetImage != null)
@@ -2736,6 +2988,8 @@ public class AutoFlipOverlay extends Overlay
             return null;
         }
     }
+
+    // AUTOFLIP_PATCH_SETUP_LOGO_TAGLINE_ASSETS_V1
     private void drawAutoFlipSetupUiLogoAsset(Graphics2D graphics, Rectangle header)
     {
         if (graphics == null || header == null)
@@ -2777,6 +3031,8 @@ public class AutoFlipOverlay extends Overlay
             }
         }
     }
+
+    // AUTOFLIP_PATCH_SETUP_LOGO_TAGLINE_ASSETS_V1
     private void drawAutoFlipSetupImageAsset(Graphics2D graphics, java.awt.image.BufferedImage image, Rectangle dest, int alphaPct, boolean cropTransparentBounds)
     {
         if (graphics == null || image == null || dest == null || dest.width <= 0 || dest.height <= 0)
@@ -2825,6 +3081,8 @@ public class AutoFlipOverlay extends Overlay
             }
         }
     }
+
+    // AUTOFLIP_PATCH_SETUP_LOGO_TAGLINE_ASSETS_V1
     private Rectangle findAutoFlipNonTransparentBounds(java.awt.image.BufferedImage image)
     {
         if (image == null)
@@ -2858,6 +3116,7 @@ public class AutoFlipOverlay extends Overlay
         }
         return new Rectangle(minX, minY, maxX - minX + 1, maxY - minY + 1);
     }
+    // AUTOFLIP_PATCH_SETUP_BACK_ARROW_POLYGON_HOLE_V1
     private Polygon buildAutoFlipSetupBackArrowHole(Rectangle box)
     {
         Polygon arrow = new Polygon();
@@ -2882,6 +3141,10 @@ public class AutoFlipOverlay extends Overlay
 
         return arrow;
     }
+
+    // AUTOFLIP_PATCH_SETUP_UI_ASSETS_LOGO_RENDER_V1_METHOD
+    // AUTOFLIP_PATCH_SETUP_UI_ASSETS_LOGO_RENDER_V1_METHOD
+    // AUTOFLIP_PATCH_SETUP_BACK_ARROW_POLYGON_HOLE_V1
     private void drawAutoFlipSetupPassivePolygonHole(Graphics2D graphics, Polygon polygon)
     {
         if (graphics == null || polygon == null || polygon.npoints <= 0)
@@ -2907,6 +3170,7 @@ public class AutoFlipOverlay extends Overlay
             graphics.setColor(oldColor);
         }
     }
+    // AUTOFLIP_PATCH_SETUP_PERSISTENT_HOLES_VISUAL_V2
     private void drawAutoFlipSetupPassiveHole(Graphics2D graphics, Rectangle box)
     {
         if (graphics == null || box == null || box.width <= 0 || box.height <= 0)
@@ -2932,6 +3196,8 @@ public class AutoFlipOverlay extends Overlay
             graphics.setColor(oldColor);
         }
     }
+
+    // AUTOFLIP_PATCH_SETUP_PERSISTENT_HOLES_VISUAL_V2
     private void drawAutoFlipSetupActiveHole(Graphics2D graphics, Rectangle box, String label, boolean solid, boolean labelVisible, Font baseFont)
     {
         if (graphics == null || box == null || box.width <= 0 || box.height <= 0)
@@ -3044,6 +3310,8 @@ public class AutoFlipOverlay extends Overlay
                 null
             );
         }
+
+        // AUTOFLIP_PATCH_AI2_REMOVE_LOGO_FALLBACK_V1
         // Fallback A removed. Toggle uses the normal PNG logo path only.
 
         graphics.setStroke(new BasicStroke(1.2f));
@@ -3084,6 +3352,38 @@ public class AutoFlipOverlay extends Overlay
         graphics.setFont(oldFont);
     }
 
+    private void drawOptimizeButton(Graphics2D graphics, int x, int y, int width)
+    {
+        int height = 46;
+        Font oldFont = graphics.getFont();
+
+        Color fill = new Color(91, 58, 21, 245);
+        Color top = new Color(127, 86, 33, 245);
+        Color border = new Color(232, 174, 70, 255);
+        Color text = new Color(255, 238, 186, 255);
+
+        graphics.setColor(new Color(0, 0, 0, 115));
+        graphics.fillRoundRect(x + 3, y + 4, width, height, 8, 8);
+
+        graphics.setColor(fill);
+        graphics.fillRoundRect(x, y, width, height, 8, 8);
+
+        graphics.setColor(top);
+        graphics.fillRoundRect(x, y, width, Math.max(12, height / 2), 8, 8);
+
+        graphics.setColor(border);
+        graphics.drawRoundRect(x, y, width, height, 8, 8);
+
+        graphics.setFont(oldFont.deriveFont(Font.BOLD, 13.5f));
+        graphics.setColor(text);
+        drawCenteredString(graphics, "Optimize Board", x, y + 22, width);
+
+        graphics.setFont(oldFont.deriveFont(Font.BOLD, 10.4f));
+        graphics.setColor(new Color(245, 245, 235, 255));
+        drawCenteredString(graphics, "Calculate with current settings", x, y + 35, width);
+
+        graphics.setFont(oldFont);
+    }
     private void drawMenuShell(Graphics2D graphics, int x, int y)
     {
         int menuWidth = config.menuWidth();
@@ -3133,10 +3433,36 @@ public class AutoFlipOverlay extends Overlay
         graphics.setFont(oldFont.deriveFont(Font.BOLD, 10.8f));
         graphics.setColor(muted);
         graphics.drawString(plugin.getAutoFlipCashBalanceLabel(), x + 57, rowY + 27);
+        rowY += 50;
+
+        graphics.setFont(oldFont.deriveFont(Font.BOLD, 12.2f));
+        graphics.setColor(text);
+        graphics.drawString("Strategy", x + 20, rowY);
+
+        graphics.setColor(new Color(245, 245, 235, 255));
+        graphics.drawOval(x + menuWidth - 43, rowY - 14, 17, 17);
+        graphics.drawString("i", x + menuWidth - 37, rowY - 1);
+
+        rowY += 17;
+        int riskFieldY = rowY;
+        drawRiskDropdown(graphics, x + 20, riskFieldY, fieldWidth, plugin.getAutoFlipRiskMode(), false, plugin.getAutoFlipHoveredRiskIndex());
+
+        int optimizeY = riskFieldY + 54;
+        drawOptimizeButton(graphics, x + 20, optimizeY, fieldWidth);
+
+        graphics.setFont(oldFont.deriveFont(Font.BOLD, 10.4f));
+        graphics.setColor(muted);
+        graphics.fillOval(x + 20, y + menuHeight - 25, 8, 8);
+        graphics.drawString("Recommendations update in real-time.", x + 36, y + menuHeight - 17);
 
         if (plugin.isAutoFlipHoursDropdownOpen())
         {
             drawHoursDropdown(graphics, x + 20, hoursFieldY + 33, fieldWidth, plugin.getAutoFlipHoursAway(), plugin.getAutoFlipHoveredHoursIndex());
+        }
+
+        if (plugin.isAutoFlipRiskDropdownOpen())
+        {
+            drawRiskDropdown(graphics, x + 20, riskFieldY, fieldWidth, plugin.getAutoFlipRiskMode(), true, plugin.getAutoFlipHoveredRiskIndex());
         }
 
         graphics.setFont(oldFont);
@@ -3295,18 +3621,27 @@ public class AutoFlipOverlay extends Overlay
 
         try
         {
-            try (InputStream stream = AutoFlipOverlay.class.getResourceAsStream(HEADER_BRAND_RESOURCE))
+            Path path = Paths.get("C:\\osrs-flip-assistant\\ProjectPhotos\\Logos\\autoflip-gg-custom-transparent.png");
+            if (!Files.exists(path))
             {
-                if (stream != null)
-                {
-                    BufferedImage image = ImageIO.read(stream);
-                    if (image != null)
-                    {
-                        BufferedImage cropped = cropTransparentPadding(image);
-                        headerBrandImage = cropped == null ? image : cropped;
-                        return headerBrandImage;
-                    }
-                }
+                return null;
+            }
+
+            URL url = path.toUri().toURL();
+
+            BufferedImage image = ImageIO.read(url);
+            if (image != null)
+            {
+                BufferedImage cropped = cropTransparentPadding(image);
+                headerBrandImage = cropped == null ? image : cropped;
+                return headerBrandImage;
+            }
+
+            ImageIcon icon = new ImageIcon(url);
+            if (icon.getIconWidth() > 0 && icon.getIconHeight() > 0)
+            {
+                headerBrandImage = icon.getImage();
+                return headerBrandImage;
             }
         }
         catch (Exception ignored)
@@ -3349,6 +3684,208 @@ public class AutoFlipOverlay extends Overlay
         graphics.drawRoundRect(x, y + 4, 22, 16, 3, 3);
         graphics.drawLine(x + 2, y + 4, x + 7, y);
         graphics.drawLine(x + 7, y, x + 13, y + 4);
+    }
+
+    private void drawRiskDropdown(Graphics2D graphics, int x, int y, int width, String selectedRisk, boolean open, int hoveredIndex)
+    {
+        Color field = new Color(35, 27, 17, 238);
+        Color selected = new Color(82, 64, 26, 230);
+        Color hover = new Color(82, 74, 58, 245);
+        Color border = new Color(159, 113, 39, 235);
+        Color text = new Color(245, 245, 235, 255);
+        Color green = new Color(123, 239, 139, 255);
+        Color muted = new Color(232, 232, 220, 250);
+        Color tooltipBg = new Color(20, 18, 14, 248);
+
+        String strategy = normalizeStrategyForOverlay(selectedRisk);
+        int headerHeight = 40;
+        int optionHeight = 31;
+        int height = open ? headerHeight + (optionHeight * 3) : headerHeight;
+
+        graphics.setColor(field);
+        graphics.fillRoundRect(x, y, width, height, 8, 8);
+        graphics.setColor(border);
+        graphics.drawRoundRect(x, y, width, height, 8, 8);
+
+        Font oldFont = graphics.getFont();
+
+        String label = strategyLabel(strategy);
+
+        graphics.setFont(oldFont.deriveFont(Font.BOLD, 12.5f));
+        graphics.setColor(green);
+
+        if ("optimize".equals(strategy))
+        {
+            drawTinyShieldIcon(graphics, x + 22, y + 13, green);
+        }
+        else if ("exploratory".equals(strategy))
+        {
+            drawTinyRiskIcon(graphics, x + 22, y + 12, green);
+        }
+        else
+        {
+            drawTinyScaleIcon(graphics, x + 21, y + 12, green);
+        }
+
+        graphics.drawString(label, x + 45, y + 26);
+        drawChevronDown(graphics, x + width - 29, y + 16, text);
+
+        if (open)
+        {
+            String[] values = new String[] {"optimize", "adaptive", "exploratory"};
+            String[] labels = new String[] {"Optimize", "Adaptive (Recommended)", "Exploratory"};
+            String[] descriptions = new String[] {
+                "Pure Optimization",
+                "AutoFlip finds your favorite types of flips faster without sacrificing profit",
+                "A mix of Optimizer and Adaptive"
+            };
+
+            for (int i = 0; i < labels.length; i++)
+            {
+                int optionY = y + headerHeight + (i * optionHeight);
+                boolean isHovered = i == hoveredIndex;
+                boolean isActive = values[i].equals(strategy);
+
+                if (isHovered)
+                {
+                    graphics.setColor(hover);
+                    graphics.fillRect(x + 8, optionY + 2, width - 16, optionHeight - 4);
+                }
+
+                if (isActive)
+                {
+                    graphics.setColor(selected);
+                    graphics.fillRect(x + 8, optionY + 2, width - 16, optionHeight - 4);
+                }
+
+                Color rowColor = isActive ? green : muted;
+                graphics.setColor(rowColor);
+                graphics.setFont(oldFont.deriveFont(isActive ? Font.BOLD : Font.PLAIN, 12.0f));
+
+                if ("optimize".equals(values[i]))
+                {
+                    drawTinyShieldIcon(graphics, x + 22, optionY + 7, rowColor);
+                }
+                else if ("adaptive".equals(values[i]))
+                {
+                    drawTinyScaleIcon(graphics, x + 21, optionY + 7, rowColor);
+                }
+                else
+                {
+                    drawTinyRiskIcon(graphics, x + 22, optionY + 7, rowColor);
+                }
+
+                graphics.drawString(labels[i], x + 45, optionY + 22);
+            }
+
+            if (hoveredIndex >= 0 && hoveredIndex < descriptions.length)
+            {
+                int tooltipX = x + 10;
+                int tooltipY = y + headerHeight + (hoveredIndex * optionHeight) + optionHeight - 1;
+                int tooltipWidth = width - 20;
+                int tooltipHeight = hoveredIndex == 1 ? 48 : 30;
+
+                if (tooltipY + tooltipHeight > y + height + 52)
+                {
+                    tooltipY = y + height - tooltipHeight - 3;
+                }
+
+                graphics.setColor(new Color(0, 0, 0, 150));
+                graphics.fillRoundRect(tooltipX + 3, tooltipY + 3, tooltipWidth, tooltipHeight, 8, 8);
+
+                graphics.setColor(tooltipBg);
+                graphics.fillRoundRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 8, 8);
+
+                graphics.setColor(new Color(123, 239, 139, 220));
+                graphics.drawRoundRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 8, 8);
+
+                graphics.setFont(oldFont.deriveFont(Font.BOLD, 9.8f));
+                graphics.setColor(text);
+                drawWrappedStrategyTooltip(graphics, descriptions[hoveredIndex], tooltipX + 8, tooltipY + 14, tooltipWidth - 16, 12);
+            }
+        }
+
+        graphics.setFont(oldFont);
+    }
+
+    private String normalizeStrategyForOverlay(String raw)
+    {
+        if (raw == null)
+        {
+            return "adaptive";
+        }
+
+        String value = raw.trim().toLowerCase(java.util.Locale.ROOT);
+
+        if ("optimize".equals(value) || "adaptive".equals(value) || "exploratory".equals(value))
+        {
+            return value;
+        }
+
+        if ("safe".equals(value))
+        {
+            return "optimize";
+        }
+
+        if ("balanced".equals(value))
+        {
+            return "adaptive";
+        }
+
+        if ("risk".equals(value))
+        {
+            return "exploratory";
+        }
+
+        return "adaptive";
+    }
+
+    private String strategyLabel(String strategy)
+    {
+        if ("optimize".equals(strategy))
+        {
+            return "Optimize";
+        }
+
+        if ("exploratory".equals(strategy))
+        {
+            return "Exploratory";
+        }
+
+        return "Adaptive (Recommended)";
+    }
+
+    private void drawWrappedStrategyTooltip(Graphics2D graphics, String text, int x, int y, int width, int lineHeight)
+    {
+        if (text == null || text.isEmpty())
+        {
+            return;
+        }
+
+        FontMetrics metrics = graphics.getFontMetrics();
+        String[] words = text.split(" ");
+        String line = "";
+        int lineY = y;
+
+        for (String word : words)
+        {
+            String next = line.isEmpty() ? word : line + " " + word;
+            if (!line.isEmpty() && metrics.stringWidth(next) > width)
+            {
+                graphics.drawString(line, x, lineY);
+                line = word;
+                lineY += lineHeight;
+            }
+            else
+            {
+                line = next;
+            }
+        }
+
+        if (!line.isEmpty())
+        {
+            graphics.drawString(line, x, lineY);
+        }
     }
 
     private void drawTinyRiskIcon(Graphics2D graphics, int x, int y, Color color)
@@ -3488,7 +4025,7 @@ public class AutoFlipOverlay extends Overlay
                 Path path = Paths.get(value);
                 if (!path.isAbsolute())
                 {
-                    path = AUTOFLIP_PLUGIN_DATA_DIR.resolve(path).normalize();
+                    path = Paths.get("C:\\osrs-flip-assistant\\Plugin-Tinker").resolve(path).normalize();
                 }
 
                 if (!Files.isRegularFile(path))
@@ -3530,7 +4067,13 @@ public class AutoFlipOverlay extends Overlay
 
             lastAttemptMs = now;
 
-            Path path = resolveOverlayDevConfigPath();
+            Path path = Paths.get("_runtime", "overlay_dev_config.properties");
+            if (!Files.exists(path))
+            {
+                path = Paths.get(
+                    "C:\\osrs-flip-assistant\\Plugin-Tinker\\_runtime\\overlay_dev_config.properties"
+                );
+            }
 
             try
             {
@@ -3902,19 +4445,6 @@ private float cardNameFont() { return getFloat("card.font.name", 10.0f); }
                 getInt("sell.guidance.bank.status.alpha", 255)
             );
         }
-    }
-
-    private static Path resolveOverlayDevConfigPath()
-    {
-        if (Files.exists(OVERLAY_DEV_CONFIG_PATH))
-        {
-            return OVERLAY_DEV_CONFIG_PATH;
-        }
-        if (Files.exists(LOCAL_OVERLAY_DEV_CONFIG_PATH))
-        {
-            return LOCAL_OVERLAY_DEV_CONFIG_PATH;
-        }
-        return OVERLAY_DEV_CONFIG_PATH;
     }
 
     private Image getLogoImage()

@@ -15,13 +15,11 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.lang.reflect.Method;
-import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -34,11 +32,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -59,6 +57,7 @@ import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.InventoryID;
 import net.runelite.api.Item;
+import net.runelite.api.ItemContainer;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
@@ -70,6 +69,13 @@ import net.runelite.client.input.MouseListener;
 import net.runelite.client.input.MouseWheelListener;
 import net.runelite.client.input.MouseManager;
 import net.runelite.client.input.KeyManager;
+import net.runelite.client.util.LinkBrowser;
+import net.runelite.http.api.item.ItemPrice;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -83,33 +89,21 @@ public class AutoFlipPlugin extends Plugin implements MouseListener, MouseWheelL
 {
     private static final Logger log = LoggerFactory.getLogger(AutoFlipPlugin.class);
     private static final String DEFAULT_PI_BASE_URL = "https://autoflip.gg";
-    private static final String TELEMETRY_EVENTS_ENDPOINT = "/api/telemetry/plugin-events";
-    private static final String TELEMETRY_CONTRACT_ENDPOINT = "/api/telemetry/contract";
-    private static final int MAX_SEND_BATCH = 250;
-    private static final String TELEMETRY_EVENT_SCHEMA = "autoflip.plugin_event.v1";
     private static final String TELEMETRY_BATCH_SCHEMA = "autoflip.plugin_event_batch.v1";
     private static final int AUTOFLIP_GE_SEARCH_MODE = 14;
     private static final String TELEMETRY_SOURCE = "runelite_plugin";
-    private static final String TELEMETRY_CLIENT = "runelite";
-    private static final String TELEMETRY_GAME = "osrs";
-    private static final String TELEMETRY_PLUGIN_VERSION = "0.1.0";
     private static final int TELEMETRY_SEND_TICK_INTERVAL = 500;
 
     private static final Path RUNTIME_DIR = Paths.get(System.getProperty("user.home", "."), ".runelite", "plugin-data", "autoflip");
     private static final Path PI_BASE_URL_FILE = RUNTIME_DIR.resolve("pi_base_url.txt");
     private static final Path SALT_FILE = RUNTIME_DIR.resolve("local_account_salt.txt");
     private static final Path SEEN_EVENT_IDS = RUNTIME_DIR.resolve("seen_event_ids.txt");
-    private static final Path ACKED_EVENT_IDS = RUNTIME_DIR.resolve("acked_event_ids.txt");
-    private static final Path REJECTED_EVENTS = RUNTIME_DIR.resolve("rejected_event_ids.jsonl");
     private static final Path OUTBOX = RUNTIME_DIR.resolve("outbox.jsonl");
-    private static final Path TELEMETRY_UPLOAD_ARCHIVE_DIR = RUNTIME_DIR.resolve("telemetry_upload_batches");
     private static final Path GE_SLOT_EVENTS = RUNTIME_DIR.resolve("ge_slot_events.jsonl");
         private static final Path GE_SLOT_CAPACITY = RUNTIME_DIR.resolve("ge_slot_capacity.jsonl");
 private static final Path GE_TRADE_HISTORY = RUNTIME_DIR.resolve("ge_trade_history_seen.jsonl");
     private static final Path GE_DEBUG = RUNTIME_DIR.resolve("ge_offers_seen.jsonl");
     private static final Path GE_WIDGET_BOUNDS = RUNTIME_DIR.resolve("ge_widget_bounds.jsonl");
-    private static final Path OVERLAY_DEV_CONFIG = RUNTIME_DIR.resolve("overlay_dev_config.properties");
-    private static final Path LOCAL_OVERLAY_DEV_CONFIG = Paths.get("_runtime", "overlay_dev_config.properties");
     private static final Path SENDER_LOG = RUNTIME_DIR.resolve("sender_log.jsonl");
     private static final Path ORDINARY_SELL_DEBUG_LOG = RUNTIME_DIR.resolve("ordinary_sell_debug.log");
     private static final boolean AUTOFLIP_VERBOSE_RUNTIME_LOGGING = false;
@@ -140,24 +134,18 @@ private static final Path GE_TRADE_HISTORY = RUNTIME_DIR.resolve("ge_trade_histo
     private final String[] currentSlotCapacityStates = new String[8];
     private String lastCapacityFingerprint = "";
 private final Set<String> seenEventIds = new HashSet<>();
-    private final Set<String> ackedEventIds = new HashSet<>();
 
-    private ExecutorService senderExecutor = Executors.newSingleThreadExecutor();
     private ExecutorService pricePrefetchExecutor = Executors.newSingleThreadExecutor();
     private volatile long autoFlipGeSearchInjectSeq = 0L;
     private volatile int autoFlipItemSearchSeededItemId = 0;
     private volatile String autoFlipItemSearchSeededText = "";
-    private volatile boolean sendInProgress = false;
     private int tickCounter = 0;
     private final String telemetrySessionId = "session_" + UUID.randomUUID().toString().replace("-", "");
     private long telemetryLocalSequence = 0L;
-    private volatile boolean telemetryContractChecked = false;
-    private volatile boolean telemetryGzipUploadSupported = false;
     private AutoFlipTelemetryRuntime telemetryRuntime;
 
     private boolean pollingApiChecked = false;
     private boolean pollingApiAvailable = false;
-    private Method geOffersMethod = null;
 
     private String localSalt = "";
     private String accountKey = "unknown_account";
@@ -189,6 +177,8 @@ private volatile boolean geHeaderFoundThisScan = false;
     private volatile int autoFlipMenuHoursAway = 6;
     private volatile long autoFlipMenuManualBudgetGp = 2000000L;
     private volatile boolean autoFlipMenuUseCashStack = true;
+    private volatile String autoFlipMenuRiskMode = "optimize";
+    private volatile boolean autoFlipRiskDropdownOpen = false;
     // Worker threads must use cached cash observed by the UI/client path, not live client reads.
     private volatile long autoFlipLastObservedCashStackGp = 0L;
 
@@ -201,6 +191,7 @@ private volatile boolean geHeaderFoundThisScan = false;
     private volatile boolean autoFlipToBuyRefreshInFlight = false;
     private volatile boolean autoFlipStartupWarmAttempted = false;
     private volatile boolean autoFlipBoardWarmInFlight = false;
+    private volatile boolean autoFlipOptimizeBoardInProgress = false;
     private volatile java.util.List<AutoFlipBoardCard> autoFlipWarmBoardCards = java.util.Collections.emptyList();
     private volatile String autoFlipWarmBoardCacheKey = "";
     private volatile long autoFlipWarmBoardBuiltAtMs = 0L;
@@ -308,7 +299,7 @@ private volatile boolean geHeaderFoundThisScan = false;
     @Inject
     private ItemManager itemManager;
     @Inject
-    private net.runelite.client.plugins.PluginManager autoFlipPluginManager;
+    private OkHttpClient okHttpClient;
 @Inject
     private AutoFlipOverlay autoFlipOverlay;
 
@@ -318,7 +309,6 @@ private volatile boolean geHeaderFoundThisScan = false;
     protected void startUp()
     {
         ensureRuntimeDir();
-        ensureSenderExecutor();
         ensurePricePrefetchExecutor();
         localSalt = loadOrCreateSalt();
         piBaseUrl = loadOrCreatePiBaseUrl();
@@ -329,7 +319,8 @@ private volatile boolean geHeaderFoundThisScan = false;
             localSalt,
             accountKey,
             this::getCurrentWorld,
-            this::isAutoFlipVerboseRuntimeLoggingEnabled
+            this::isAutoFlipVerboseRuntimeLoggingEnabled,
+            okHttpClient
         );
         loadSeenEventIds();
         telemetryRuntime.loadAckedEventIds();
@@ -417,23 +408,11 @@ private volatile boolean geHeaderFoundThisScan = false;
         );
         sendOutboxSync("shutdown");
 
-        if (senderExecutor != null)
-        {
-            senderExecutor.shutdownNow();
-        }
         if (pricePrefetchExecutor != null)
         {
             pricePrefetchExecutor.shutdownNow();
         }
         logAutoFlipVerbose("AUTOFLIP_PLUGIN_STOPPED");
-    }
-
-    private void ensureSenderExecutor()
-    {
-        if (senderExecutor == null || senderExecutor.isShutdown() || senderExecutor.isTerminated())
-        {
-            senderExecutor = Executors.newSingleThreadExecutor();
-        }
     }
 
     private void ensurePricePrefetchExecutor()
@@ -914,484 +893,15 @@ tickCounter++;
         if (telemetryRuntime != null)
         {
             telemetryRuntime.sendOutboxAsync(reason);
-            return;
         }
-
-        if (sendInProgress)
-        {
-            return;
-        }
-
-        sendInProgress = true;
-        senderExecutor.submit(() ->
-        {
-            try
-            {
-                sendOutboxSync(reason);
-            }
-            finally
-            {
-                sendInProgress = false;
-            }
-        });
     }
 
     private void sendOutboxSync(String reason)
     {
-        try
+        if (telemetryRuntime != null)
         {
-            loadAckedEventIds();
-            pruneAckedOutboxRows();
-
-            List<OutboxRecord> batch = readUnackedOutboxBatch(MAX_SEND_BATCH);
-            if (batch.isEmpty())
-            {
-                appendLine(SENDER_LOG, "{\"event\":\"send_skipped_no_unacked\",\"reason\":\"" + safe(reason) + "\",\"ts\":\"" + now() + "\"}");
-                return;
-            }
-
-            fetchTelemetryContractIfNeeded();
-
-            String requestBody = buildBatchRequest(batch);
-            String url = piBaseUrl + TELEMETRY_EVENTS_ENDPOINT;
-            String response = postJson(url, requestBody);
-
-            Set<String> ackable = new HashSet<>();
-            ackable.addAll(parseStringArray(response, "accepted_event_ids"));
-            ackable.addAll(parseStringArray(response, "duplicate_event_ids"));
-            if (ackable.isEmpty() && readJsonBool(response, "ok", false))
-            {
-                for (OutboxRecord record : batch)
-                {
-                    ackable.add(record.eventId);
-                }
-            }
-
-            int ackedNow = 0;
-            for (String id : ackable)
-            {
-                if (id != null && !id.isEmpty() && !ackedEventIds.contains(id))
-                {
-                    ackedEventIds.add(id);
-                    appendLine(ACKED_EVENT_IDS, id);
-                    ackedNow++;
-                }
-            }
-            if (!ackable.isEmpty())
-            {
-                pruneAckedOutboxRows();
-            }
-
-            String rejectedBlock = extractRejectedBlock(response);
-            if (!rejectedBlock.isEmpty())
-            {
-                appendLine(REJECTED_EVENTS, "{\"event\":\"pi_rejected_response\",\"reason\":\"" + safe(reason) + "\",\"ts\":\"" + now() + "\",\"response\":" + jsonStringLiteral(response) + "}");
-            }
-
-            appendLine(
-                SENDER_LOG,
-                "{\"event\":\"send_complete\","
-                    + "\"reason\":\"" + safe(reason) + "\","
-                    + "\"url\":\"" + safe(url) + "\","
-                    + "\"compressed\":" + telemetryGzipUploadSupported + ","
-                    + "\"batch_size\":" + batch.size() + ","
-                    + "\"acked_now\":" + ackedNow + ","
-                    + "\"accepted_count\":" + parseStringArray(response, "accepted_event_ids").size() + ","
-                    + "\"duplicate_count\":" + parseStringArray(response, "duplicate_event_ids").size() + ","
-                    + "\"ts\":\"" + now() + "\"}"
-            );
-
-            logAutoFlipVerbose("AUTOFLIP_PI_SEND_COMPLETE batch=" + batch.size() + " acked_now=" + ackedNow);
+            telemetryRuntime.sendOutboxSync(reason);
         }
-        catch (Exception e)
-        {
-            appendLine(
-                SENDER_LOG,
-                "{\"event\":\"send_failed\","
-                    + "\"reason\":\"" + safe(reason) + "\","
-                    + "\"error\":\"" + safe(e.getClass().getSimpleName()) + "\","
-                    + "\"message\":\"" + safe(e.getMessage()) + "\","
-                    + "\"ts\":\"" + now() + "\"}"
-            );
-
-            logAutoFlipVerbose("AUTOFLIP_PI_SEND_FAILED " + e.getClass().getSimpleName() + " " + e.getMessage());
-        }
-    }
-
-    private List<OutboxRecord> readUnackedOutboxBatch(int max)
-    {
-        List<OutboxRecord> records = new ArrayList<>();
-
-        if (!Files.exists(OUTBOX))
-        {
-            return records;
-        }
-
-        try
-        {
-            for (String line : Files.readAllLines(OUTBOX, StandardCharsets.UTF_8))
-            {
-                if (records.size() >= max)
-                {
-                    break;
-                }
-
-                String eventId = jsonString(line, "event_id", "");
-                if (eventId.isEmpty() || ackedEventIds.contains(eventId))
-                {
-                    continue;
-                }
-
-                String createdAt = jsonString(line, "created_at", now());
-                String payload = extractPayloadObject(line);
-                if (payload.isEmpty())
-                {
-                    continue;
-                }
-                if (!isUploadWorthyTelemetryPayload(payload))
-                {
-                    continue;
-                }
-
-                records.add(new OutboxRecord(eventId, createdAt, payload));
-            }
-        }
-        catch (IOException e)
-        {
-            log.warn("Unable to read outbox", e);
-        }
-
-        return records;
-    }
-
-    private void pruneAckedOutboxRows()
-    {
-        if (!Files.exists(OUTBOX))
-        {
-            return;
-        }
-
-        try
-        {
-            List<String> retained = new ArrayList<>();
-            int removedAcked = 0;
-            int removedIneligible = 0;
-
-            for (String line : Files.readAllLines(OUTBOX, StandardCharsets.UTF_8))
-            {
-                String eventId = jsonString(line, "event_id", "");
-                if (!eventId.isEmpty() && ackedEventIds.contains(eventId))
-                {
-                    removedAcked++;
-                    continue;
-                }
-
-                String payload = extractPayloadObject(line);
-                if (payload.isEmpty() || !isUploadWorthyTelemetryPayload(payload))
-                {
-                    removedIneligible++;
-                    continue;
-                }
-
-                retained.add(line);
-            }
-
-            if (removedAcked <= 0 && removedIneligible <= 0)
-            {
-                return;
-            }
-
-            Path tempOutbox = OUTBOX.resolveSibling(OUTBOX.getFileName().toString() + ".tmp");
-            Files.write(
-                tempOutbox,
-                retained,
-                StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING
-            );
-            Files.move(tempOutbox, OUTBOX, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            appendLine(
-                SENDER_LOG,
-                "{\"event\":\"outbox_pruned\","
-                    + "\"removed_acked\":" + removedAcked + ","
-                    + "\"removed_ineligible\":" + removedIneligible + ","
-                    + "\"retained\":" + retained.size() + ","
-                    + "\"ts\":\"" + now() + "\"}"
-            );
-        }
-        catch (IOException e)
-        {
-            log.warn("Unable to prune acked outbox rows", e);
-            appendLine(SENDER_LOG, "{\"event\":\"outbox_prune_failed\",\"error\":\"" + safe(e.getClass().getSimpleName()) + "\",\"message\":\"" + safe(e.getMessage()) + "\",\"ts\":\"" + now() + "\"}");
-        }
-    }
-
-    private String buildBatchRequest(List<OutboxRecord> records)
-    {
-        StringBuilder sb = new StringBuilder();
-        String playerHash = telemetryPlayerHash();
-        String batchId = buildTelemetryBatchId(records);
-
-        sb.append("{");
-        sb.append("\"schema\":\"").append(TELEMETRY_BATCH_SCHEMA).append("\",");
-        sb.append("\"batch_id\":\"").append(safe(batchId)).append("\",");
-        sb.append("\"player_hash\":\"").append(safe(playerHash)).append("\",");
-        sb.append("\"session_id\":\"").append(safe(telemetrySessionId)).append("\",");
-        sb.append("\"event_count\":").append(records.size()).append(",");
-        sb.append("\"events\":[");
-
-        for (int i = 0; i < records.size(); i++)
-        {
-            OutboxRecord r = records.get(i);
-
-            if (i > 0)
-            {
-                sb.append(",");
-            }
-
-            sb.append(buildTelemetryEventJson(r, batchId, playerHash));
-        }
-
-        sb.append("]}");
-
-        return sb.toString();
-    }
-
-    private String buildPendingSummaryRequest(long observedTsMs)
-    {
-        StringBuilder sb = new StringBuilder();
-        String playerHash = telemetryPlayerHash();
-
-        sb.append("{");
-        sb.append("\"schema\":\"autoflip.plugin_pending_slot_summary.v1\",");
-        sb.append("\"batch_id\":\"pending_").append(safe(telemetrySessionId)).append("\",");
-        sb.append("\"player_hash\":\"").append(safe(playerHash)).append("\",");
-        sb.append("\"session_id\":\"").append(safe(telemetrySessionId)).append("\",");
-        sb.append("\"generated_at_ms\":").append(observedTsMs).append(",");
-        sb.append("\"pending_count\":").append(getAutoFlipTelemetryPendingSummaryCount()).append(",");
-        sb.append("\"slots\":[");
-
-        boolean first = true;
-        for (int slot = 0; slot < slotPlacedTsMs.length; slot++)
-        {
-            if (slotPlacedTsMs[slot] <= 0L || slotPlacedItemId[slot] <= 0)
-            {
-                continue;
-            }
-
-            if (!first)
-            {
-                sb.append(",");
-            }
-            first = false;
-            sb.append(buildPendingSlotJson(slot, observedTsMs, playerHash));
-        }
-
-        sb.append("]}");
-        return sb.toString();
-    }
-
-    private String buildPendingSlotJson(int slot, long observedTsMs, String playerHash)
-    {
-        long placedTsMs = slotPlacedTsMs[slot];
-        long lastSeenTsMs = Math.max(slotLastSeenOpenTsMs[slot], placedTsMs);
-        long ageSeconds = Math.max(0L, (observedTsMs - placedTsMs) / 1000L);
-        String state = slotLastObservedState[slot] == null ? "OPEN" : slotLastObservedState[slot];
-        String side = slotPlacedSide[slot] == null ? inferSide(state) : slotPlacedSide[slot];
-        String itemName = getAutoFlipItemNameForDebug(slotPlacedItemId[slot]);
-        AutoFlipRecommendationContext context = slotRecommendationContext[slot];
-
-        StringBuilder offer = new StringBuilder();
-        offer.append("{");
-        offer.append("\"slot\":").append(slot).append(",");
-        offer.append("\"slot_instance_seq\":").append(slotInstanceSeq[slot]).append(",");
-        offer.append("\"item_id\":").append(slotPlacedItemId[slot]).append(",");
-        offer.append("\"item_name\":\"").append(safe(itemName.isEmpty() ? "item #" + slotPlacedItemId[slot] : itemName)).append("\",");
-        offer.append("\"action\":\"").append(safe(side)).append("\",");
-        offer.append("\"status\":\"active\",");
-        offer.append("\"state\":\"").append(safe(state)).append("\",");
-        offer.append("\"offered_price\":").append(Math.max(0, slotPlacedPrice[slot])).append(",");
-        offer.append("\"offered_quantity\":").append(Math.max(0, slotPlacedQuantity[slot])).append(",");
-        offer.append("\"filled_quantity\":").append(Math.max(0, slotLastObservedFilledQuantity[slot])).append(",");
-        offer.append("\"spent_or_received_gp\":").append(Math.max(0, slotLastObservedSpentGp[slot])).append(",");
-        offer.append("\"placed_ts_ms\":").append(placedTsMs).append(",");
-        offer.append("\"placed_ts\":\"").append(Instant.ofEpochMilli(placedTsMs)).append("\",");
-        offer.append("\"last_seen_ts_ms\":").append(lastSeenTsMs).append(",");
-        offer.append("\"last_seen_ts\":\"").append(Instant.ofEpochMilli(lastSeenTsMs)).append("\",");
-        offer.append("\"time_detected_ts_ms\":").append(placedTsMs).append(",");
-        offer.append("\"time_detected_ts\":\"").append(Instant.ofEpochMilli(placedTsMs)).append("\",");
-        offer.append("\"age_seconds\":").append(ageSeconds).append(",");
-        offer.append("\"time_in_trade_lower_bound_seconds\":").append(ageSeconds).append(",");
-        offer.append("\"time_in_trade_upper_bound_seconds\":").append(ageSeconds).append(",");
-        offer.append("\"player_hash\":\"").append(safe(playerHash)).append("\"");
-
-        if (context != null)
-        {
-            appendJsonStringField(offer, "recommendation_id", context.recommendationId);
-            appendJsonStringField(offer, "plan_id", context.planId);
-            appendJsonStringField(offer, "cache_build_id", context.cacheBuildId);
-            appendJsonStringField(offer, "payload_hash", context.payloadHash);
-            appendJsonLongField(offer, "recommendation_generated_ts_ms", context.recommendationGeneratedTsMs);
-            appendJsonLongField(offer, "recommendation_shown_ts_ms", context.recommendationShownTsMs);
-            if (context.boardSlot >= 0)
-            {
-                offer.append(",\"board_slot\":").append(context.boardSlot);
-            }
-            appendJsonLongField(offer, "suggested_buy_price", context.suggestedBuyPriceGp);
-            appendJsonLongField(offer, "suggested_sell_price", context.suggestedSellPriceGp);
-            appendJsonLongField(offer, "suggested_quantity", context.suggestedQuantity);
-            appendJsonStringField(offer, "execution_pricing_source", context.executionPricingSource);
-        }
-
-        offer.append("}");
-        return offer.toString();
-    }
-
-    private String accountKeyFromRecords(List<OutboxRecord> records)
-    {
-        for (OutboxRecord r : records)
-        {
-            String key = jsonString(r.payloadJson, "account_key", "");
-            if (!key.isEmpty())
-            {
-                return key;
-            }
-        }
-
-        return accountKey;
-    }
-
-    private void fetchTelemetryContractIfNeeded()
-    {
-        if (telemetryContractChecked)
-        {
-            return;
-        }
-
-        telemetryContractChecked = true;
-        String url = piBaseUrl + TELEMETRY_CONTRACT_ENDPOINT;
-        try
-        {
-            String response = httpGetText(url, 5000);
-            telemetryGzipUploadSupported = response.contains("\"gzip_upload_supported\":true")
-                || response.contains("\"gzip_upload_supported\": true");
-            appendLine(
-                SENDER_LOG,
-                "{\"event\":\"telemetry_contract_checked\","
-                    + "\"url\":\"" + safe(url) + "\","
-                    + "\"ok\":" + (!response.isEmpty() && response.contains("plugin_event_contract_v1")) + ","
-                    + "\"gzip_upload_supported\":" + telemetryGzipUploadSupported + ","
-                    + "\"bytes\":" + response.length() + ","
-                    + "\"ts\":\"" + now() + "\"}"
-            );
-        }
-        catch (Exception e)
-        {
-            appendLine(
-                SENDER_LOG,
-                "{\"event\":\"telemetry_contract_check_failed\","
-                    + "\"url\":\"" + safe(url) + "\","
-                    + "\"error\":\"" + safe(e.getClass().getSimpleName()) + "\","
-                    + "\"message\":\"" + safe(e.getMessage()) + "\","
-                    + "\"ts\":\"" + now() + "\"}"
-            );
-        }
-    }
-
-    private String buildTelemetryBatchId(List<OutboxRecord> records)
-    {
-        if (records == null || records.isEmpty())
-        {
-            return "batch_" + telemetrySessionId;
-        }
-
-        String first = records.get(0).eventId;
-        String last = records.get(records.size() - 1).eventId;
-        return "batch_" + sha256(telemetrySessionId + "|" + first + "|" + last + "|" + records.size()).substring(0, 24);
-    }
-
-    private String buildTelemetryEventJson(OutboxRecord record, String batchId, String playerHash)
-    {
-        String payload = record.payloadJson == null || record.payloadJson.isEmpty() ? "{}" : record.payloadJson;
-        String eventType = telemetryEventTypeFromPayload(payload);
-        long eventTsMs = telemetryEventTsMs(record.createdAt, payload);
-        int itemId = readJsonInt(payload, "item_id", 0);
-        int geSlot = readJsonInt(payload, "slot", -1);
-        String itemName = readJsonString(payload, "item_name", "");
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("{");
-        sb.append("\"schema\":\"").append(TELEMETRY_EVENT_SCHEMA).append("\",");
-        sb.append("\"event_id\":\"").append(safe(record.eventId)).append("\",");
-        sb.append("\"event_ts_ms\":").append(eventTsMs).append(",");
-        sb.append("\"event_type\":\"").append(safe(eventType)).append("\",");
-        sb.append("\"game\":\"").append(TELEMETRY_GAME).append("\",");
-        sb.append("\"source\":\"").append(TELEMETRY_SOURCE).append("\",");
-        sb.append("\"plugin_version\":\"").append(TELEMETRY_PLUGIN_VERSION).append("\",");
-        sb.append("\"client\":\"").append(TELEMETRY_CLIENT).append("\",");
-        sb.append("\"player_hash\":\"").append(safe(playerHash)).append("\",");
-        sb.append("\"session_id\":\"").append(safe(telemetrySessionId)).append("\",");
-        sb.append("\"local_sequence\":").append(readJsonLong(payload, "local_sequence", 0L)).append(",");
-        sb.append("\"batch_id\":\"").append(safe(batchId)).append("\"");
-
-        int world = getCurrentWorld();
-        if (world > 0)
-        {
-            sb.append(",\"world\":").append(world);
-        }
-        if (geSlot >= 0)
-        {
-            sb.append(",\"ge_slot\":").append(geSlot);
-        }
-        if (itemId > 0)
-        {
-            sb.append(",\"item_id\":").append(itemId);
-        }
-        if (!itemName.isEmpty())
-        {
-            sb.append(",\"item_name\":\"").append(safe(itemName)).append("\"");
-        }
-
-        appendRecommendationEnvelopeFields(sb, payload);
-        sb.append(",\"payload\":").append(payload);
-        sb.append("}");
-        return sb.toString();
-    }
-
-    private void appendRecommendationEnvelopeFields(StringBuilder sb, String payload)
-    {
-        appendJsonStringFieldIfPresent(sb, payload, "recommendation_id");
-        appendJsonStringFieldIfPresent(sb, payload, "plan_id");
-        appendJsonLongFieldIfPresent(sb, payload, "board_slot");
-        appendJsonStringFieldIfPresent(sb, payload, "optimizer_version");
-        appendJsonStringFieldIfPresent(sb, payload, "frontier_version");
-        appendJsonStringFieldIfPresent(sb, payload, "proxy_model_version");
-        appendJsonStringFieldIfPresent(sb, payload, "glmm_model_version");
-        appendJsonStringFieldIfPresent(sb, payload, "active_model_id");
-        appendJsonStringFieldIfPresent(sb, payload, "cache_build_id");
-        appendJsonLongFieldIfPresent(sb, payload, "recommendation_generated_ts_ms");
-        appendJsonLongFieldIfPresent(sb, payload, "recommendation_shown_ts_ms");
-        appendJsonLongFieldIfPresent(sb, payload, "recommendation_age_seconds");
-        appendJsonStringFieldIfPresent(sb, payload, "mode");
-    }
-
-    private void appendJsonStringFieldIfPresent(StringBuilder sb, String payload, String key)
-    {
-        String value = readJsonString(payload, key, "");
-        if (!value.isEmpty())
-        {
-            sb.append(",\"").append(key).append("\":\"").append(safe(value)).append("\"");
-        }
-    }
-
-    private void appendJsonLongFieldIfPresent(StringBuilder sb, String payload, String key)
-    {
-        if (payload == null || !payload.contains("\"" + key + "\""))
-        {
-            return;
-        }
-
-        sb.append(",\"").append(key).append("\":").append(readJsonLong(payload, key, 0L));
     }
 
     private String telemetryEventTypeFromPayload(String payload)
@@ -1575,76 +1085,6 @@ tickCounter++;
         enqueueOnce(eventId, payload.toString(), GE_DEBUG);
     }
 
-    private String postJson(String urlString, String body) throws IOException
-    {
-        URL url = new URL(urlString);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        boolean compressed = telemetryGzipUploadSupported;
-
-        conn.setRequestMethod("POST");
-        conn.setConnectTimeout(5000);
-        conn.setReadTimeout(10000);
-        conn.setDoOutput(true);
-        conn.setRequestProperty("Content-Type", compressed ? "application/gzip" : "application/json; charset=utf-8");
-        conn.setRequestProperty("Accept", "application/json");
-
-        byte[] jsonBytes = body.getBytes(StandardCharsets.UTF_8);
-        byte[] bodyBytes = compressed ? gzipBytes(jsonBytes) : jsonBytes;
-        conn.setRequestProperty("Content-Length", Integer.toString(bodyBytes.length));
-
-        try (OutputStream os = conn.getOutputStream())
-        {
-            os.write(bodyBytes);
-        }
-
-        archiveTelemetryUploadBatch(bodyBytes, compressed);
-
-        int status = conn.getResponseCode();
-        InputStream stream = status >= 200 && status < 300 ? conn.getInputStream() : conn.getErrorStream();
-        String response = readAll(stream);
-
-        if (status < 200 || status >= 300)
-        {
-            throw new IOException("HTTP " + status + " " + response);
-        }
-
-        return response;
-    }
-
-    private byte[] gzipBytes(byte[] input) throws IOException
-    {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try (GZIPOutputStream gzip = new GZIPOutputStream(out))
-        {
-            gzip.write(input);
-        }
-        return out.toByteArray();
-    }
-
-    private void archiveTelemetryUploadBatch(byte[] bodyBytes, boolean compressed)
-    {
-        if (bodyBytes == null || bodyBytes.length == 0)
-        {
-            return;
-        }
-
-        try
-        {
-            Files.createDirectories(TELEMETRY_UPLOAD_ARCHIVE_DIR);
-            String suffix = compressed ? ".json.gz" : ".json";
-            String name = "telemetry_batch_" + System.currentTimeMillis() + suffix;
-            Files.write(
-                TELEMETRY_UPLOAD_ARCHIVE_DIR.resolve(name),
-                bodyBytes,
-                StandardOpenOption.CREATE_NEW
-            );
-        }
-        catch (Exception e)
-        {
-            appendLine(SENDER_LOG, "{\"event\":\"telemetry_upload_archive_failed\",\"error\":\"" + safe(e.getClass().getSimpleName()) + "\",\"message\":\"" + safe(e.getMessage()) + "\",\"ts\":\"" + now() + "\"}");
-        }
-    }
-
     public String getAutoFlipTelemetryCurrentPackageJson()
     {
         if (telemetryRuntime != null)
@@ -1652,21 +1092,7 @@ tickCounter++;
             return telemetryRuntime.getCurrentPackageJson();
         }
 
-        try
-        {
-            List<OutboxRecord> batch = readUnackedOutboxBatch(MAX_SEND_BATCH);
-            if (batch == null || batch.isEmpty())
-            {
-                return "{\"schema\":\"" + TELEMETRY_BATCH_SCHEMA + "\",\"batch_id\":\"batch_empty\",\"player_hash\":\"\",\"session_id\":\"" + safe(telemetrySessionId) + "\",\"event_count\":0,\"events\":[]}";
-            }
-
-            return buildBatchRequest(batch);
-        }
-        catch (Throwable error)
-        {
-            logAutoFlipUiError("getAutoFlipTelemetryCurrentPackageJson", error);
-            return "{\"error\":\"" + safe(error.getClass().getSimpleName()) + "\",\"message\":\"" + safe(error.getMessage()) + "\"}";
-        }
+        return "{\"schema\":\"" + TELEMETRY_BATCH_SCHEMA + "\",\"batch_id\":\"batch_empty\",\"player_hash\":\"\",\"session_id\":\"" + safe(telemetrySessionId) + "\",\"event_count\":0,\"events\":[]}";
     }
 
     public int getAutoFlipTelemetryCurrentPackageEventCount()
@@ -1676,16 +1102,7 @@ tickCounter++;
             return telemetryRuntime.getCurrentPackageEventCount();
         }
 
-        try
-        {
-            List<OutboxRecord> batch = readUnackedOutboxBatch(MAX_SEND_BATCH);
-            return batch == null ? 0 : batch.size();
-        }
-        catch (Throwable error)
-        {
-            logAutoFlipUiError("getAutoFlipTelemetryCurrentPackageEventCount", error);
-            return 0;
-        }
+        return 0;
     }
 
     public long getAutoFlipTelemetryNextSendCountdownMs()
@@ -1695,26 +1112,7 @@ tickCounter++;
             return telemetryRuntime.getNextSendCountdownMs();
         }
 
-        try
-        {
-            if (sendInProgress)
-            {
-                return 0L;
-            }
-
-            int remainingTicks = TELEMETRY_SEND_TICK_INTERVAL - tickCounter;
-            if (remainingTicks < 0)
-            {
-                remainingTicks = TELEMETRY_SEND_TICK_INTERVAL;
-            }
-
-            return Math.max(0L, remainingTicks * 600L);
-        }
-        catch (Throwable error)
-        {
-            logAutoFlipUiError("getAutoFlipTelemetryNextSendCountdownMs", error);
-            return 0L;
-        }
+        return 0L;
     }
 
     public boolean isAutoFlipTelemetrySendInProgress()
@@ -1724,7 +1122,7 @@ tickCounter++;
             return telemetryRuntime.isSendInProgress();
         }
 
-        return sendInProgress;
+        return false;
     }
 
     public String getAutoFlipTelemetryPendingSummaryJson()
@@ -1734,15 +1132,7 @@ tickCounter++;
             return telemetryRuntime.getPendingSummaryJson();
         }
 
-        try
-        {
-            return buildPendingSummaryRequest(System.currentTimeMillis());
-        }
-        catch (Throwable error)
-        {
-            logAutoFlipUiError("getAutoFlipTelemetryPendingSummaryJson", error);
-            return "{\"error\":\"" + safe(error.getClass().getSimpleName()) + "\",\"message\":\"" + safe(error.getMessage()) + "\"}";
-        }
+        return "{\"schema\":\"autoflip.plugin_pending_slot_summary.v1\",\"pending_count\":0,\"slots\":[]}";
     }
 
     public int getAutoFlipTelemetryPendingSummaryCount()
@@ -1778,119 +1168,7 @@ tickCounter++;
             return telemetryRuntime.getSentHistoryEntries(maxEntries);
         }
 
-        int limit = Math.max(0, maxEntries);
-        if (limit == 0)
-        {
-            return java.util.Collections.emptyList();
-        }
-
-        try
-        {
-            if (!java.nio.file.Files.isDirectory(TELEMETRY_UPLOAD_ARCHIVE_DIR))
-            {
-                return java.util.Collections.emptyList();
-            }
-
-            try (java.util.stream.Stream<Path> paths = java.nio.file.Files.list(TELEMETRY_UPLOAD_ARCHIVE_DIR))
-            {
-                return paths
-                    .filter(java.nio.file.Files::isRegularFile)
-                    .filter(path -> {
-                        String name = path.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
-                        return name.endsWith(".json") || name.endsWith(".json.gz");
-                    })
-                    .sorted((a, b) -> {
-                        try
-                        {
-                            long am = java.nio.file.Files.getLastModifiedTime(a).toMillis();
-                            long bm = java.nio.file.Files.getLastModifiedTime(b).toMillis();
-                            return Long.compare(bm, am);
-                        }
-                        catch (IOException ignored)
-                        {
-                            return b.getFileName().toString().compareToIgnoreCase(a.getFileName().toString());
-                        }
-                    })
-                    .limit(limit)
-                    .map(path -> {
-                        try
-                        {
-                            return readTelemetryArchiveEntry(path);
-                        }
-                        catch (Throwable error)
-                        {
-                            logAutoFlipUiError("getAutoFlipTelemetrySentHistoryEntries", error);
-                            return null;
-                        }
-                    })
-                    .filter(java.util.Objects::nonNull)
-                    .collect(java.util.stream.Collectors.toList());
-            }
-        }
-        catch (Throwable error)
-        {
-            logAutoFlipUiError("getAutoFlipTelemetrySentHistoryEntries", error);
-            return java.util.Collections.emptyList();
-        }
-    }
-
-    private AutoFlipTelemetryArchiveEntry readTelemetryArchiveEntry(Path file) throws IOException
-    {
-        byte[] raw = java.nio.file.Files.readAllBytes(file);
-        String payload;
-        if (file.getFileName().toString().toLowerCase(java.util.Locale.ROOT).endsWith(".gz"))
-        {
-            try (java.io.ByteArrayInputStream in = new java.io.ByteArrayInputStream(raw);
-                 java.util.zip.GZIPInputStream gzip = new java.util.zip.GZIPInputStream(in))
-            {
-                payload = readAll(gzip);
-            }
-        }
-        else
-        {
-            payload = new String(raw, StandardCharsets.UTF_8);
-        }
-
-        long modifiedAtMs = 0L;
-        try
-        {
-            modifiedAtMs = java.nio.file.Files.getLastModifiedTime(file).toMillis();
-        }
-        catch (IOException ignored)
-        {
-            modifiedAtMs = 0L;
-        }
-
-        String batchId = readJsonString(payload, "batch_id", file.getFileName().toString());
-        int eventCount = readJsonInt(payload, "event_count", extractJsonArrayObjects(payload, "events").size());
-        return new AutoFlipTelemetryArchiveEntry(
-            file.getFileName().toString(),
-            modifiedAtMs,
-            batchId,
-            eventCount,
-            payload
-        );
-    }
-
-    private static String readAll(InputStream stream) throws IOException
-    {
-        if (stream == null)
-        {
-            return "";
-        }
-
-        StringBuilder sb = new StringBuilder();
-
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8)))
-        {
-            String line;
-            while ((line = reader.readLine()) != null)
-            {
-                sb.append(line);
-            }
-        }
-
-        return sb.toString();
+        return java.util.Collections.emptyList();
     }
 
     private static Set<String> parseStringArray(String json, String key)
@@ -2018,10 +1296,10 @@ tickCounter++;
             }
 
             Rectangle cover = new Rectangle(
-                header.x + readAutoFlipSetupDevInt("setup.cover.x", -5),
-                header.y + readAutoFlipSetupDevInt("setup.cover.y", 27),
-                readAutoFlipSetupDevInt("setup.cover.w", 484),
-                readAutoFlipSetupDevInt("setup.cover.h", 270)
+                header.x + readAutoFlipSetupConfigInt("setup.cover.x", -5),
+                header.y + readAutoFlipSetupConfigInt("setup.cover.y", 27),
+                readAutoFlipSetupConfigInt("setup.cover.w", 484),
+                readAutoFlipSetupConfigInt("setup.cover.h", 270)
             );
 
             if (!cover.contains(x, y))
@@ -2032,12 +1310,12 @@ tickCounter++;
             // Allow intentional native holes only.
             if (pointInsideAutoFlipSetupRect(x, y, header, "setup.item.icon", 56, 48, 42, 40)) { return false; }
             if (pointInsideAutoFlipSetupRect(x, y, header, "setup.item.description", 160, 32, 318, 92)) { return false; }
-            if (pointInsideAutoFlipSetupRect(x, y, header, "setup.quantity.value", 34, 150, 188, 27)) { return false; }
-            if (pointInsideAutoFlipSetupRect(x, y, header, "setup.price.value", 248, 150, 210, 27)) { return false; }
-            if (pointInsideAutoFlipSetupRect(x, y, header, "setup.quantity.quick", 178, 186, 62, 28)) { return false; }
-            if (pointInsideAutoFlipSetupRect(x, y, header, "setup.quick", 295, 186, 62, 28)) { return false; }
-            if (pointInsideAutoFlipSetupRect(x, y, header, "setup.final.price", 34, 207, 424, 29)) { return false; }
-            if (pointInsideAutoFlipSetupRect(x, y, header, "setup.confirm", 172, 251, 152, 39)) { return false; }
+            if (pointInsideAutoFlipSetupRect(x, y, header, "setup.quantity.value", 33, 150, 152, 23)) { return false; }
+            if (pointInsideAutoFlipSetupRect(x, y, header, "setup.price.value", 248, 150, 190, 23)) { return false; }
+            if (pointInsideAutoFlipSetupRect(x, y, header, "setup.quantity.quick", 175, 177, 32, 22)) { return false; }
+            if (pointInsideAutoFlipSetupRect(x, y, header, "setup.quick", 345, 177, 33, 23)) { return false; }
+            if (pointInsideAutoFlipSetupRect(x, y, header, "setup.final.price", 34, 205, 409, 23)) { return false; }
+            if (pointInsideAutoFlipSetupRect(x, y, header, "setup.confirm", 161, 244, 152, 39)) { return false; }
             if (pointInsideAutoFlipSetupRect(x, y, header, "setup.back.arrow", 17, 248, 43, 42)) { return false; }
 
             if (readBoolConfig("debug.mouse.logs.enabled", false))
@@ -2060,43 +1338,17 @@ tickCounter++;
         }
 
         Rectangle rect = new Rectangle(
-            header.x + readAutoFlipSetupDevInt(prefix + ".x", defaultX),
-            header.y + readAutoFlipSetupDevInt(prefix + ".y", defaultY),
-            readAutoFlipSetupDevInt(prefix + ".w", defaultW),
-            readAutoFlipSetupDevInt(prefix + ".h", defaultH)
+            header.x + readAutoFlipSetupConfigInt(prefix + ".x", defaultX),
+            header.y + readAutoFlipSetupConfigInt(prefix + ".y", defaultY),
+            readAutoFlipSetupConfigInt(prefix + ".w", defaultW),
+            readAutoFlipSetupConfigInt(prefix + ".h", defaultH)
         );
 
         return rect.contains(x, y);
     }
-    private int readAutoFlipSetupDevInt(String key, int fallback)
+    private int readAutoFlipSetupConfigInt(String key, int fallback)
     {
-        try
-        {
-            java.nio.file.Path path = resolveOverlayConfigReadPath();
-
-            if (!java.nio.file.Files.exists(path))
-            {
-                return fallback;
-            }
-
-            java.util.Properties props = new java.util.Properties();
-            try (java.io.Reader reader = java.nio.file.Files.newBufferedReader(path, java.nio.charset.StandardCharsets.UTF_8))
-            {
-                props.load(reader);
-            }
-
-            String value = props.getProperty(key);
-            if (value == null || value.trim().isEmpty())
-            {
-                return fallback;
-            }
-
-            return Integer.parseInt(value.trim());
-        }
-        catch (Throwable ignored)
-        {
-            return fallback;
-        }
+        return fallback;
     }
     @Override
     public MouseEvent mouseClicked(MouseEvent mouseEvent)
@@ -2747,9 +1999,7 @@ if (keyEvent == null || !isAutoFlipTextInputActive())
 
     private boolean isEditModeUsable()
     {
-        return geWindowOpenForOverlay
-            && autoFlipOverlayActive
-            && readBoolConfig("edit.mode.enabled", false);
+        return false;
     }
 
     private EditHandleHit findEditHandle(int mouseX, int mouseY)
@@ -2804,10 +2054,10 @@ if (keyEvent == null || !isAutoFlipTextInputActive())
             }
 
             Rectangle setupQuickBounds = new Rectangle(
-                headerBounds.x + readIntConfig("setup.quick.x", 295),
-                headerBounds.y + readIntConfig("setup.quick.y", 186),
-                readIntConfig("setup.quick.w", 62),
-                readIntConfig("setup.quick.h", 28)
+                headerBounds.x + readIntConfig("setup.quick.x", 345),
+                headerBounds.y + readIntConfig("setup.quick.y", 177),
+                readIntConfig("setup.quick.w", 33),
+                readIntConfig("setup.quick.h", 23)
             );
 
             if (setupQuickBounds.contains(mouseX, mouseY))
@@ -2822,10 +2072,10 @@ if (keyEvent == null || !isAutoFlipTextInputActive())
             }
 
             Rectangle setupConfirmBounds = new Rectangle(
-                headerBounds.x + readIntConfig("setup.confirm.x", 172),
-                headerBounds.y + readIntConfig("setup.confirm.y", 251),
-                readIntConfig("setup.confirm.w", 164),
-                readIntConfig("setup.confirm.h", 40)
+                headerBounds.x + readIntConfig("setup.confirm.x", 161),
+                headerBounds.y + readIntConfig("setup.confirm.y", 244),
+                readIntConfig("setup.confirm.w", 152),
+                readIntConfig("setup.confirm.h", 39)
             );
 
             if (setupConfirmBounds.contains(mouseX, mouseY))
@@ -3033,134 +2283,29 @@ int x = base.x + cardOffsetX;
 
     private int readIntConfig(String key, int fallback)
     {
-        try
-        {
-            String raw = readOverlayConfig().getProperty(key);
-            return raw == null ? fallback : Integer.parseInt(raw.trim());
-        }
-        catch (Exception ignored)
-        {
-            return fallback;
-        }
+        return fallback;
     }
 
     private double readDoubleConfig(String key, double fallback)
     {
-        try
-        {
-            String raw = readOverlayConfig().getProperty(key);
-            return raw == null ? fallback : Double.parseDouble(raw.trim());
-        }
-        catch (Exception ignored)
-        {
-            return fallback;
-        }
+        return fallback;
     }
 
     private boolean readBoolConfig(String key, boolean fallback)
     {
-        try
-        {
-            String raw = readOverlayConfig().getProperty(key);
-            if (raw == null)
-            {
-                return fallback;
-            }
+        return fallback;
+    }
 
-            return "true".equalsIgnoreCase(raw.trim())
-                || "yes".equalsIgnoreCase(raw.trim())
-                || "1".equals(raw.trim());
-        }
-        catch (Exception ignored)
-        {
-            return fallback;
-        }
+    private String readStringConfig(String key, String fallback)
+    {
+        return fallback;
     }
 
 
     private void updateOverlayConfig(String key, String value)
     {
-        if (key == null || key.trim().isEmpty())
-        {
-            return;
-        }
-
-        try
-        {
-            Files.createDirectories(RUNTIME_DIR);
-
-            List<String> lines = new ArrayList<>();
-            Path seedPath = Files.exists(OVERLAY_DEV_CONFIG) ? OVERLAY_DEV_CONFIG : resolveOverlayConfigReadPath();
-            if (Files.exists(seedPath))
-            {
-                lines.addAll(Files.readAllLines(seedPath, StandardCharsets.UTF_8));
-            }
-
-            boolean replaced = false;
-            Pattern keyPattern = Pattern.compile("^\\s*" + Pattern.quote(key) + "\\s*=.*$");
-
-            for (int i = 0; i < lines.size(); i++)
-            {
-                if (keyPattern.matcher(lines.get(i)).matches())
-                {
-                    lines.set(i, key + "=" + value);
-                    replaced = true;
-                }
-            }
-
-            if (!replaced)
-            {
-                lines.add(key + "=" + value);
-            }
-
-            Files.write(
-                OVERLAY_DEV_CONFIG,
-                lines,
-                StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING
-            );
-        }
-        catch (Exception e)
-        {
-            log.warn("Unable to update AutoFlip overlay dev config {}", key, e);
-        }
+        // Overlay tuning persistence is intentionally omitted from the Plugin Hub build.
     }
-    private Properties readOverlayConfig()
-    {
-        Properties props = new Properties();
-        Path readPath = resolveOverlayConfigReadPath();
-
-        if (!Files.exists(readPath))
-        {
-            return props;
-        }
-
-        try (InputStream in = Files.newInputStream(readPath))
-        {
-            props.load(in);
-        }
-        catch (Exception ignored)
-        {
-            return props;
-        }
-
-        return props;
-    }
-
-    private static Path resolveOverlayConfigReadPath()
-    {
-        if (Files.exists(OVERLAY_DEV_CONFIG))
-        {
-            return OVERLAY_DEV_CONFIG;
-        }
-        if (Files.exists(LOCAL_OVERLAY_DEV_CONFIG))
-        {
-            return LOCAL_OVERLAY_DEV_CONFIG;
-        }
-        return OVERLAY_DEV_CONFIG;
-    }
-
     private void writeIntConfig(String key, int value)
     {
         writeStringConfig(key, Integer.toString(value));
@@ -3168,47 +2313,7 @@ int x = base.x + cardOffsetX;
 
     private void writeStringConfig(String key, String value)
     {
-        try
-        {
-            Files.createDirectories(RUNTIME_DIR);
-
-            List<String> lines = new ArrayList<>();
-            Path seedPath = Files.exists(OVERLAY_DEV_CONFIG) ? OVERLAY_DEV_CONFIG : resolveOverlayConfigReadPath();
-            if (Files.exists(seedPath))
-            {
-                lines.addAll(Files.readAllLines(seedPath, StandardCharsets.UTF_8));
-            }
-
-            boolean replaced = false;
-            Pattern keyPattern = Pattern.compile("^" + Pattern.quote(key) + "=");
-
-            for (int i = 0; i < lines.size(); i++)
-            {
-                if (keyPattern.matcher(lines.get(i)).find())
-                {
-                    lines.set(i, key + "=" + value);
-                    replaced = true;
-                    break;
-                }
-            }
-
-            if (!replaced)
-            {
-                lines.add(key + "=" + value);
-            }
-
-            Files.write(
-                OVERLAY_DEV_CONFIG,
-                lines,
-                StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING
-            );
-        }
-        catch (Exception e)
-        {
-            log.warn("Unable to update AutoFlip overlay dev config {}", key, e);
-        }
+        // Overlay tuning persistence is intentionally omitted from the Plugin Hub build.
     }
 
     private static final class EditHandleHit
@@ -3477,6 +2582,16 @@ int x = base.x + cardOffsetX;
         return autoFlipHoursDropdownOpen;
     }
 
+    public String getAutoFlipRiskMode()
+    {
+        return normalizeAutoFlipRisk(autoFlipMenuRiskMode);
+    }
+
+    public boolean isAutoFlipRiskDropdownOpen()
+    {
+        return autoFlipRiskDropdownOpen;
+    }
+
 
     public int getAutoFlipHoveredHoursIndex()
     {
@@ -3507,6 +2622,41 @@ int x = base.x + cardOffsetX;
         }
 
         return Math.max(0, Math.min(7, (autoFlipLastMouseY - dropdownY) / optionHeight));
+    }
+
+    public int getAutoFlipHoveredRiskIndex()
+    {
+        if (!autoFlipRiskDropdownOpen || !autoFlipOverlayActive || geHeaderBoundsForOverlay == null)
+        {
+            return -1;
+        }
+
+        int menuX = geHeaderBoundsForOverlay.x + geHeaderBoundsForOverlay.width + readIntConfig("menu.offset.x", 18);
+        int menuY = geHeaderBoundsForOverlay.y + readIntConfig("menu.offset.y", -10);
+        int menuWidth = readIntConfig("menu.width", 304);
+        int fieldWidth = menuWidth - 40;
+
+        int hoursY = menuY + 112;
+        int budgetY = hoursY + 62;
+        int checkboxY = budgetY + 62;
+        int riskLabelY = checkboxY + 50;
+        int riskY = riskLabelY + 17;
+        int dropdownX = menuX + 20;
+        int dropdownY = riskY + 40;
+        int optionHeight = 31;
+        int dropdownHeight = optionHeight * 3;
+
+        if (autoFlipLastMouseX < dropdownX || autoFlipLastMouseX > dropdownX + fieldWidth)
+        {
+            return -1;
+        }
+
+        if (autoFlipLastMouseY < dropdownY || autoFlipLastMouseY > dropdownY + dropdownHeight)
+        {
+            return -1;
+        }
+
+        return Math.max(0, Math.min(2, (autoFlipLastMouseY - dropdownY) / optionHeight));
     }
     public int getAutoFlipHoursAway()
     {
@@ -4015,31 +3165,18 @@ int x = base.x + cardOffsetX;
 
         try
         {
-            java.lang.reflect.Method searchMethod = itemManager.getClass().getMethod("search", String.class);
-            Object result = searchMethod.invoke(itemManager, itemName);
-
-            if (result instanceof java.util.Collection<?>)
+            for (ItemPrice row : itemManager.search(itemName))
             {
-                for (Object row : (java.util.Collection<?>) result)
+                if (row == null)
                 {
-                    if (row == null)
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    java.lang.reflect.Method getName = row.getClass().getMethod("getName");
-                    java.lang.reflect.Method getId = row.getClass().getMethod("getId");
-
-                    Object nameValue = getName.invoke(row);
-                    Object idValue = getId.invoke(row);
-
-                    String rowName = normalizeAutoFlipItemNameForCompare(String.valueOf(nameValue == null ? "" : nameValue));
-                    int rowId = idValue instanceof Number ? ((Number) idValue).intValue() : 0;
-
-                    if (rowId > 0 && rowName.equals(wanted))
-                    {
-                        return rowId;
-                    }
+                String rowName = normalizeAutoFlipItemNameForCompare(row.getName());
+                int rowId = row.getId();
+                if (rowId > 0 && rowName.equals(wanted))
+                {
+                    return rowId;
                 }
             }
         }
@@ -5286,45 +4423,33 @@ int x = base.x + cardOffsetX;
 
         try
         {
-            java.lang.reflect.Method searchMethod = itemManager.getClass().getMethod("search", String.class);
-            Object result = searchMethod.invoke(itemManager, trimmed);
-
-            if (result instanceof java.util.Collection<?>)
+            for (ItemPrice row : itemManager.search(trimmed))
             {
-                for (Object row : (java.util.Collection<?>) result)
+                if (row == null)
                 {
-                    if (row == null)
-                    {
-                        continue;
-                    }
-
-                    java.lang.reflect.Method getName = row.getClass().getMethod("getName");
-                    java.lang.reflect.Method getId = row.getClass().getMethod("getId");
-
-                    Object nameValue = getName.invoke(row);
-                    Object idValue = getId.invoke(row);
-
-                    int itemId = idValue instanceof Number ? ((Number) idValue).intValue() : 0;
-                    String itemName = String.valueOf(nameValue == null ? "" : nameValue);
-
-                    if (itemId <= 0 || itemName.trim().isEmpty())
-                    {
-                        continue;
-                    }
-
-                    results.add(new AutoFlipMarketSearchResult(
-                        itemId,
-                        itemName,
-                        "",
-                        0L,
-                        0L,
-                        0L,
-                        0L,
-                        "local_item_search",
-                        "",
-                        getAutoFlipMarketItemUrl(itemId, itemName)
-                    ));
+                    continue;
                 }
+
+                int itemId = row.getId();
+                String itemName = row.getName() == null ? "" : row.getName();
+
+                if (itemId <= 0 || itemName.trim().isEmpty())
+                {
+                    continue;
+                }
+
+                results.add(new AutoFlipMarketSearchResult(
+                    itemId,
+                    itemName,
+                    "",
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    "local_item_search",
+                    "",
+                    getAutoFlipMarketItemUrl(itemId, itemName)
+                ));
             }
         }
         catch (Throwable ignored)
@@ -6422,11 +5547,7 @@ int x = base.x + cardOffsetX;
             }
 
             String url = getAutoFlipMarketItemUrl(itemId, itemName);
-            if (java.awt.Desktop.isDesktopSupported())
-            {
-                java.awt.Desktop.getDesktop().browse(new java.net.URI(url));
-            }
-
+            LinkBrowser.browse(url);
             logAutoFlipMenuEvent("market_opened_" + itemId);
         }
         catch (Throwable error)
@@ -6676,349 +5797,6 @@ int x = base.x + cardOffsetX;
         }
 
         return snapshots;
-    }
-    private long autoFlipLastBankVisualLogMs = 0L;
-
-    public boolean isAutoFlipBankOpenForSidePanel()
-    {
-        boolean hasBankContainer = false;
-        boolean bankContainerVisible = false;
-        boolean hasBankTitle = false;
-        boolean bankTitleVisible = false;
-        boolean hasBankItemContainer = false;
-        boolean bankItemContainerVisible = false;
-        boolean hasBankInventoryContainer = false;
-        boolean bankInventoryContainerVisible = false;
-        boolean hasBankItemContainerData = false;
-
-        try
-        {
-            if (client == null)
-            {
-                return false;
-            }
-
-            net.runelite.api.widgets.Widget bankContainer = client.getWidget(net.runelite.api.widgets.ComponentID.BANK_CONTAINER);
-            hasBankContainer = bankContainer != null;
-            bankContainerVisible = bankContainer != null && !bankContainer.isHidden();
-
-            net.runelite.api.widgets.Widget bankTitle = client.getWidget(net.runelite.api.widgets.ComponentID.BANK_TITLE_BAR);
-            hasBankTitle = bankTitle != null;
-            bankTitleVisible = bankTitle != null && !bankTitle.isHidden();
-
-            net.runelite.api.widgets.Widget bankItemContainer = client.getWidget(net.runelite.api.widgets.ComponentID.BANK_ITEM_CONTAINER);
-            hasBankItemContainer = bankItemContainer != null;
-            bankItemContainerVisible = bankItemContainer != null && !bankItemContainer.isHidden();
-
-            net.runelite.api.widgets.Widget bankInventoryContainer = client.getWidget(net.runelite.api.widgets.ComponentID.BANK_INVENTORY_ITEM_CONTAINER);
-            hasBankInventoryContainer = bankInventoryContainer != null;
-            bankInventoryContainerVisible = bankInventoryContainer != null && !bankInventoryContainer.isHidden();
-
-            hasBankItemContainerData = client.getItemContainer(net.runelite.api.InventoryID.BANK) != null;
-
-            boolean open = bankContainerVisible || bankTitleVisible || bankItemContainerVisible || bankInventoryContainerVisible || hasBankItemContainerData;
-
-            long now = System.currentTimeMillis();
-            if (now - autoFlipLastBankVisualLogMs > 1500L)
-            {
-                autoFlipLastBankVisualLogMs = now;
-                logAutoFlipVerbose(
-                    "AUTOFLIP_BANK_VISUAL_STATE open=" + open
-                    + " bankContainer=" + hasBankContainer + "/" + bankContainerVisible
-                    + " title=" + hasBankTitle + "/" + bankTitleVisible
-                    + " itemWidget=" + hasBankItemContainer + "/" + bankItemContainerVisible
-                    + " invWidget=" + hasBankInventoryContainer + "/" + bankInventoryContainerVisible
-                    + " bankData=" + hasBankItemContainerData
-                );
-            }
-
-            return open;
-        }
-        catch (Throwable ex)
-        {
-            long now = System.currentTimeMillis();
-            if (now - autoFlipLastBankVisualLogMs > 1500L)
-            {
-                autoFlipLastBankVisualLogMs = now;
-                logAutoFlipVerbose("AUTOFLIP_BANK_VISUAL_STATE error=" + ex.getClass().getSimpleName() + " message=" + String.valueOf(ex.getMessage()));
-            }
-            return false;
-        }
-    }
-
-    public void openAutoFlipInventoryBankView()
-    {
-        if (clientThread == null)
-        {
-            logAutoFlipVerbose("AUTOFLIP_BANK_VIEW unavailable reason=no_client_thread");
-            return;
-        }
-
-        clientThread.invokeLater(() ->
-        {
-            try
-            {
-                openAutoFlipInventoryBankViewCleanOnClientThread();
-            }
-            catch (Throwable ex)
-            {
-                logAutoFlipVerbose("AUTOFLIP_BANK_VIEW error=" + ex.getClass().getSimpleName() + " message=" + String.valueOf(ex.getMessage()));
-            }
-        });
-    }
-    private void openAutoFlipInventoryBankViewCleanOnClientThread()
-    {
-        final String tagName = "autoflip_inventory";
-
-        if (client == null)
-        {
-            logAutoFlipVerbose("AUTOFLIP_BANK_VIEW unavailable reason=no_client");
-            return;
-        }
-
-        net.runelite.api.ItemContainer bank = client.getItemContainer(net.runelite.api.InventoryID.BANK);
-        if (bank == null)
-        {
-            logAutoFlipVerbose("AUTOFLIP_BANK_VIEW unavailable reason=bank_not_open");
-            return;
-        }
-
-        java.util.Set<Integer> bankItemIds = new java.util.LinkedHashSet<>();
-        net.runelite.api.Item[] bankItems = bank.getItems();
-
-        if (bankItems != null)
-        {
-            for (net.runelite.api.Item bankItem : bankItems)
-            {
-                if (bankItem == null)
-                {
-                    continue;
-                }
-
-                int bankItemId = bankItem.getId();
-                int bankQty = bankItem.getQuantity();
-
-                if (bankItemId > 0 && bankQty > 0)
-                {
-                    bankItemIds.add(canonicalizeAutoFlipInventoryItemId(bankItemId));
-                }
-            }
-        }
-
-        java.util.List<AutoFlipInventoryItem> heldItems = getAutoFlipInventorySnapshot();
-        java.util.Set<Integer> matchingItemIds = new java.util.LinkedHashSet<>();
-
-        for (AutoFlipInventoryItem heldItem : heldItems)
-        {
-            if (heldItem == null || heldItem.getItemId() <= 0)
-            {
-                continue;
-            }
-
-            int canonicalHeldId = canonicalizeAutoFlipInventoryItemId(heldItem.getItemId());
-
-            if (bankItemIds.contains(canonicalHeldId))
-            {
-                matchingItemIds.add(canonicalHeldId);
-            }
-        }
-
-        if (matchingItemIds.isEmpty())
-        {
-            logAutoFlipVerbose("AUTOFLIP_BANK_VIEW no_matching_bank_items held_count=" + heldItems.size() + " bank_unique_count=" + bankItemIds.size());
-            return;
-        }
-
-        try
-        {
-            logAutoFlipVerbose("AUTOFLIP_BANK_VIEW bridge_v3b start matching_count=" + matchingItemIds.size());
-
-            Object inventorySetupsPlugin = findInventorySetupsPluginInstance();
-            if (inventorySetupsPlugin == null)
-            {
-                logAutoFlipVerbose("AUTOFLIP_BANK_VIEW unavailable reason=inventory_setups_plugin_not_found_or_disabled");
-                return;
-            }
-
-            Object bankTagsService = readPrivateFieldByTypeName(inventorySetupsPlugin, "net.runelite.client.plugins.banktags.BankTagsService");
-            Object tagManager = readPrivateFieldByTypeName(inventorySetupsPlugin, "net.runelite.client.plugins.banktags.TagManager");
-
-            if (bankTagsService == null || tagManager == null)
-            {
-                logAutoFlipVerbose("AUTOFLIP_BANK_VIEW unavailable reason=inventory_setups_banktag_fields_missing bankTagsService=" + (bankTagsService != null) + " tagManager=" + (tagManager != null));
-                return;
-            }
-
-            Class<?> bankTagsServiceClass = bankTagsService.getClass();
-            Class<?> tagManagerClass = tagManager.getClass();
-
-            java.lang.reflect.Method openBankTag = bankTagsServiceClass.getMethod("openBankTag", String.class, int.class);
-            java.lang.reflect.Method removeTag = tagManagerClass.getMethod("removeTag", String.class);
-            java.lang.reflect.Method addTag = tagManagerClass.getMethod("addTag", int.class, String.class, boolean.class);
-
-            java.lang.reflect.Method closeBankTag = null;
-            try
-            {
-                closeBankTag = bankTagsServiceClass.getMethod("closeBankTag");
-            }
-            catch (Throwable ignored)
-            {
-            }
-
-            java.lang.reflect.Method setHidden = null;
-            try
-            {
-                setHidden = tagManagerClass.getMethod("setHidden", String.class, boolean.class);
-            }
-            catch (Throwable ignored)
-            {
-            }
-
-            if (closeBankTag != null)
-            {
-                invokeBankBridgeStep("closeBankTag", closeBankTag, bankTagsService);
-            }
-
-            invokeBankBridgeStep("removeTag", removeTag, tagManager, tagName);
-
-            for (Integer itemId : matchingItemIds)
-            {
-                if (itemId != null && itemId > 0)
-                {
-                    invokeBankBridgeStep("addTag:" + itemId, addTag, tagManager, itemId.intValue(), tagName, false);
-                }
-            }
-
-            if (setHidden != null)
-            {
-                invokeBankBridgeStep("setHidden", setHidden, tagManager, tagName, true);
-            }
-
-            invokeBankBridgeStep("openBankTag", openBankTag, bankTagsService, tagName, -1);
-
-            logAutoFlipVerbose("AUTOFLIP_BANK_VIEW opened tag=" + tagName + " item_count=" + matchingItemIds.size());
-        }
-        catch (Throwable reflectionError)
-        {
-            logAutoFlipVerbose("AUTOFLIP_BANK_VIEW unavailable reason=bank_tag_reflection_failed detail=" + describeReflectionThrowable(reflectionError));
-        }
-    }
-    private Object findInventorySetupsPluginInstance()
-    {
-        if (autoFlipPluginManager == null)
-        {
-            logAutoFlipVerbose("AUTOFLIP_BANK_VIEW inventory_setups_lookup reason=no_plugin_manager");
-            return null;
-        }
-
-        try
-        {
-            java.util.Collection<?> plugins = autoFlipPluginManager.getPlugins();
-            if (plugins == null)
-            {
-                logAutoFlipVerbose("AUTOFLIP_BANK_VIEW inventory_setups_lookup reason=plugins_null");
-                return null;
-            }
-
-            for (Object pluginObject : plugins)
-            {
-                if (pluginObject == null)
-                {
-                    continue;
-                }
-
-                String className = pluginObject.getClass().getName();
-                if ("inventorysetups.InventorySetupsPlugin".equals(className))
-                {
-                    boolean enabled = true;
-                    try
-                    {
-                        enabled = autoFlipPluginManager.isPluginEnabled((net.runelite.client.plugins.Plugin) pluginObject);
-                    }
-                    catch (Throwable ignored)
-                    {
-                    }
-
-                    logAutoFlipVerbose("AUTOFLIP_BANK_VIEW inventory_setups_found enabled=" + enabled);
-                    return pluginObject;
-                }
-            }
-
-            logAutoFlipVerbose("AUTOFLIP_BANK_VIEW inventory_setups_lookup reason=not_found plugin_count=" + plugins.size());
-            return null;
-        }
-        catch (Throwable ex)
-        {
-            logAutoFlipVerbose("AUTOFLIP_BANK_VIEW inventory_setups_lookup error=" + describeReflectionThrowable(ex));
-            return null;
-        }
-    }
-    private Object readPrivateFieldByTypeName(Object source, String typeName)
-    {
-        if (source == null || typeName == null)
-        {
-            return null;
-        }
-
-        Class<?> current = source.getClass();
-
-        while (current != null)
-        {
-            for (java.lang.reflect.Field field : current.getDeclaredFields())
-            {
-                try
-                {
-                    if (field.getType() != null && typeName.equals(field.getType().getName()))
-                    {
-                        field.setAccessible(true);
-                        return field.get(source);
-                    }
-                }
-                catch (Throwable ignored)
-                {
-                }
-            }
-
-            current = current.getSuperclass();
-        }
-
-        return null;
-    }
-    private Object invokeBankBridgeStep(String stepName, java.lang.reflect.Method method, Object target, Object... args) throws Throwable
-    {
-        try
-        {
-            Object result = method.invoke(target, args);
-            logAutoFlipVerbose("AUTOFLIP_BANK_VIEW step_ok=" + stepName);
-            return result;
-        }
-        catch (java.lang.reflect.InvocationTargetException ite)
-        {
-            Throwable cause = ite.getCause();
-            logAutoFlipVerbose("AUTOFLIP_BANK_VIEW step_failed=" + stepName + " detail=" + describeReflectionThrowable(cause != null ? cause : ite));
-            throw ite;
-        }
-    }
-    private String describeReflectionThrowable(Throwable error)
-    {
-        if (error == null)
-        {
-            return "null";
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append(error.getClass().getName()).append(":").append(String.valueOf(error.getMessage()));
-
-        Throwable cause = error.getCause();
-        int depth = 0;
-        while (cause != null && depth < 4)
-        {
-            sb.append(" caused_by=").append(cause.getClass().getName()).append(":").append(String.valueOf(cause.getMessage()));
-            cause = cause.getCause();
-            depth++;
-        }
-
-        return sb.toString();
     }
     private void refreshAutoFlipInventoryAssessedValues()
     {
@@ -8166,6 +6944,7 @@ int x = base.x + cardOffsetX;
                 autoFlipHoursDropdownOpen = false;
                 autoFlipBudgetInputActive = false;
                 autoFlipHoursInputActive = false;
+                autoFlipRiskDropdownOpen = false;
 
                 logAutoFlipMenuEvent(nextActive ? "logo_activated" : "logo_deactivated");
                 return true;
@@ -8211,17 +6990,24 @@ int x = base.x + cardOffsetX;
             {
                 commitAutoFlipTextInputs();
                 autoFlipHoursDropdownOpen = false;
+                autoFlipRiskDropdownOpen = false;
                 return false;
             }
 
             int hoursY = menuY + 112;
             int budgetY = hoursY + 62;
             int checkboxY = budgetY + 62;
+            int riskLabelY = checkboxY + 50;
+            int riskY = riskLabelY + 17;
+            int optimizeY = riskY + 54;
 
             Rectangle hoursRect = new Rectangle(menuX + 20, hoursY, fieldWidth, 30);
             Rectangle hoursDropdownRect = new Rectangle(menuX + 20, hoursY + 33, fieldWidth, 248);
             Rectangle budgetRect = new Rectangle(menuX + 20, budgetY, fieldWidth, 30);
             Rectangle checkboxRect = new Rectangle(menuX + 20, checkboxY - 7, fieldWidth, 28);
+            Rectangle riskHeaderRect = new Rectangle(menuX + 20, riskY, fieldWidth, 40);
+            Rectangle riskDropdownRect = new Rectangle(menuX + 20, riskY + 40, fieldWidth, 93);
+            Rectangle optimizeRect = new Rectangle(menuX + 20, optimizeY, fieldWidth, 46);
 
             if (autoFlipHoursDropdownOpen && hoursDropdownRect.contains(mouseX, mouseY))
             {
@@ -8247,10 +7033,36 @@ int x = base.x + cardOffsetX;
                 return true;
             }
 
+            if (autoFlipRiskDropdownOpen && riskDropdownRect.contains(mouseX, mouseY))
+            {
+                int optionHeight = 31;
+                int optionIndex = Math.max(0, Math.min(2, (mouseY - (riskY + 40)) / optionHeight));
+                if (optionIndex == 0)
+                {
+                    autoFlipMenuRiskMode = "optimize";
+                    logAutoFlipMenuEvent("strategy_optimize");
+                }
+                else if (optionIndex == 1)
+                {
+                    autoFlipMenuRiskMode = "adaptive";
+                    logAutoFlipMenuEvent("strategy_adaptive");
+                }
+                else
+                {
+                    autoFlipMenuRiskMode = "exploratory";
+                    logAutoFlipMenuEvent("strategy_exploratory");
+                }
+
+                autoFlipRiskDropdownOpen = false;
+                persistAutoFlipMenuState();
+                return true;
+            }
+
             if (hoursRect.contains(mouseX, mouseY))
             {
                 commitAutoFlipTextInputs();
                 autoFlipBudgetInputActive = false;
+                autoFlipRiskDropdownOpen = false;
                 autoFlipHoursDropdownOpen = true;
                 autoFlipHoursInputActive = true;
                 autoFlipHoursInputBuffer = "";
@@ -8261,6 +7073,7 @@ int x = base.x + cardOffsetX;
             if (budgetRect.contains(mouseX, mouseY))
             {
                 autoFlipHoursDropdownOpen = false;
+                autoFlipRiskDropdownOpen = false;
                 autoFlipHoursInputActive = false;
                 autoFlipMenuUseCashStack = false;
                 autoFlipBudgetInputActive = true;
@@ -8284,18 +7097,37 @@ int x = base.x + cardOffsetX;
                 autoFlipHoursDropdownOpen = false;
             }
 
+            if (riskHeaderRect.contains(mouseX, mouseY))
+            {
+                autoFlipHoursDropdownOpen = false;
+                autoFlipBudgetInputActive = false;
+                autoFlipRiskDropdownOpen = !autoFlipRiskDropdownOpen;
+                logAutoFlipMenuEvent(autoFlipRiskDropdownOpen ? "strategy_dropdown_opened" : "strategy_dropdown_closed");
+                return true;
+            }
+
+            if (autoFlipRiskDropdownOpen && !riskDropdownRect.contains(mouseX, mouseY))
+            {
+                autoFlipRiskDropdownOpen = false;
+            }
+
             if (checkboxRect.contains(mouseX, mouseY))
             {
                 autoFlipBudgetInputActive = false;
                 autoFlipHoursInputActive = false;
                 autoFlipMenuUseCashStack = !autoFlipMenuUseCashStack;
-                if (autoFlipMenuUseCashStack)
-                {
-                    getCurrentCashStackGp();
-                }
 
                 persistAutoFlipMenuState();
                 logAutoFlipMenuEvent("use_cash_toggled");
+                return true;
+            }
+
+            if (optimizeRect.contains(mouseX, mouseY))
+            {
+                commitAutoFlipTextInputs();
+                persistAutoFlipMenuState();
+                logAutoFlipMenuEvent("optimize_board_clicked");
+                triggerAutoFlipOptimizeBoard();
                 return true;
             }
 
@@ -8660,13 +7492,14 @@ int x = base.x + cardOffsetX;
         {
             javax.swing.SwingUtilities.invokeLater(panel::refreshFromPlugin);
         }
-    }    private long getCurrentCashStackGp()
+    }
+
+    private long getCurrentCashStackGp()
     {
         long detected = detectInventoryCoinsGp();
         return Math.max(0L, detected);
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
     private long detectInventoryCoinsGp()
     {
         if (client == null)
@@ -8676,46 +7509,30 @@ int x = base.x + cardOffsetX;
 
         try
         {
-            Class<?> inventoryIdClass = Class.forName("net.runelite.api.InventoryID");
-            Class<? extends Enum> enumClass = (Class<? extends Enum>) inventoryIdClass.asSubclass(Enum.class);
-            Object inventory = Enum.valueOf(enumClass, "INVENTORY");
-
-            java.lang.reflect.Method getItemContainer = client.getClass().getMethod("getItemContainer", inventoryIdClass);
-            Object container = getItemContainer.invoke(client, inventory);
+            ItemContainer container = client.getItemContainer(InventoryID.INVENTORY);
             if (container == null)
             {
                 return 0L;
             }
 
-            java.lang.reflect.Method getItems = container.getClass().getMethod("getItems");
-            Object result = getItems.invoke(container);
-            if (!(result instanceof Object[]))
+            Item[] items = container.getItems();
+            if (items == null)
             {
                 return 0L;
             }
 
-            Object[] items = (Object[]) result;
             long coins = 0L;
 
-            for (Object item : items)
+            for (Item item : items)
             {
                 if (item == null)
                 {
                     continue;
                 }
 
-                java.lang.reflect.Method getId = item.getClass().getMethod("getId");
-                java.lang.reflect.Method getQuantity = item.getClass().getMethod("getQuantity");
-
-                Object idValue = getId.invoke(item);
-                Object quantityValue = getQuantity.invoke(item);
-
-                int itemId = idValue instanceof Number ? ((Number) idValue).intValue() : 0;
-                int quantity = quantityValue instanceof Number ? ((Number) quantityValue).intValue() : 0;
-
-                if (itemId == 995)
+                if (item.getId() == 995)
                 {
-                    coins += Math.max(0, quantity);
+                    coins += Math.max(0, item.getQuantity());
                 }
             }
 
@@ -8729,11 +7546,9 @@ int x = base.x + cardOffsetX;
 
     private void loadAutoFlipMenuState()
     {
-        Properties props = readOverlayConfig();
-
         autoFlipMenuHoursAway = clampMenuHours(readIntConfig("menu.hours.away", autoFlipMenuHoursAway));
         autoFlipMenuUseCashStack = readBoolConfig("menu.use.current.cash", autoFlipMenuUseCashStack);
-        autoFlipMenuManualBudgetGp = readLongProperty(props, "menu.manual.budget.gp", autoFlipMenuManualBudgetGp);
+        autoFlipMenuRiskMode = normalizeAutoFlipRisk(readStringConfig("menu.risk.mode", autoFlipMenuRiskMode));
 
     }
 
@@ -8742,6 +7557,7 @@ int x = base.x + cardOffsetX;
         updateOverlayConfig("menu.hours.away", String.valueOf(autoFlipMenuHoursAway));
         updateOverlayConfig("menu.manual.budget.gp", String.valueOf(autoFlipMenuManualBudgetGp));
         updateOverlayConfig("menu.use.current.cash", String.valueOf(autoFlipMenuUseCashStack));
+        updateOverlayConfig("menu.risk.mode", normalizeAutoFlipRisk(autoFlipMenuRiskMode));
     }
 
     private int clampMenuHours(int value)
@@ -8749,17 +7565,36 @@ int x = base.x + cardOffsetX;
         return Math.max(1, Math.min(336, value));
     }
 
-    private long readLongProperty(Properties props, String key, long fallback)
+    private String normalizeAutoFlipRisk(String raw)
     {
-        try
+        if (raw == null)
         {
-            String raw = props.getProperty(key);
-            return raw == null ? fallback : Long.parseLong(raw.trim());
+            return "optimize";
         }
-        catch (Exception ignored)
+
+        String value = raw.trim().toLowerCase(java.util.Locale.ROOT);
+
+        if ("optimize".equals(value) || "adaptive".equals(value) || "exploratory".equals(value))
         {
-            return fallback;
+            return value;
         }
+
+        if ("safe".equals(value))
+        {
+            return "optimize";
+        }
+
+        if ("balanced".equals(value))
+        {
+            return "adaptive";
+        }
+
+        if ("risk".equals(value))
+        {
+            return "exploratory";
+        }
+
+        return "optimize";
     }
 
     private String formatGp(long value)
@@ -8797,7 +7632,7 @@ int x = base.x + cardOffsetX;
                 + "\"source\":\"autoflip_runelite\","
                 + "\"hours\":" + autoFlipMenuHoursAway + ","
                 + "\"use_cash\":" + autoFlipMenuUseCashStack + ","
-                + "\"cash_gp\":" + getCurrentCashStackGp() + ","
+                + "\"cash_gp\":" + Math.max(0L, autoFlipLastObservedCashStackGp) + ","
                 + "\"manual_budget_gp\":" + autoFlipMenuManualBudgetGp + ","
                 + "\"ts\":\"" + now() + "\""
                 + "}"
@@ -9085,47 +7920,25 @@ int x = base.x + cardOffsetX;
         if (!pollingApiChecked)
         {
             pollingApiChecked = true;
-            try
-            {
-                geOffersMethod = client.getClass().getMethod("getGrandExchangeOffers");
-                pollingApiAvailable = true;
-                appendLine(GE_DEBUG, "{\"event\":\"ge_polling_api_found\",\"source\":\"autoflip_runelite\",\"method\":\"getGrandExchangeOffers\",\"ts\":\"" + now() + "\"}");
-                logAutoFlipVerbose("AUTOFLIP_GE_POLLING_API_FOUND getGrandExchangeOffers");
-            }
-            catch (Exception e)
-            {
-                pollingApiAvailable = false;
-                appendLine(GE_DEBUG, "{\"event\":\"ge_polling_api_missing\",\"source\":\"autoflip_runelite\",\"method\":\"getGrandExchangeOffers\",\"ts\":\"" + now() + "\"}");
-                logAutoFlipVerbose("AUTOFLIP_GE_POLLING_API_MISSING getGrandExchangeOffers");
-            }
+            pollingApiAvailable = true;
         }
 
-        if (!pollingApiAvailable || geOffersMethod == null)
+        if (!pollingApiAvailable)
         {
             return;
         }
 
         try
         {
-            Object result = geOffersMethod.invoke(client);
-
-            if (!(result instanceof Object[]))
-            {
-                return;
-            }
-
-            Object[] offers = (Object[]) result;
+            GrandExchangeOffer[] offers = client.getGrandExchangeOffers();
 
             for (int slot = 0; slot < offers.length && slot < lastCanonicalSnapshots.length; slot++)
             {
-                Object rawOffer = offers[slot];
-
-                if (!(rawOffer instanceof GrandExchangeOffer))
+                GrandExchangeOffer offer = offers[slot];
+                if (offer == null)
                 {
                     continue;
                 }
-
-                GrandExchangeOffer offer = (GrandExchangeOffer) rawOffer;
 
                 recordSlotState(
                     "game_tick_polling",
@@ -10237,11 +9050,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         if (telemetryRuntime != null)
         {
             telemetryRuntime.loadAckedEventIds();
-            return;
         }
-
-        ackedEventIds.clear();
-        loadIdsInto(ACKED_EVENT_IDS, ackedEventIds);
     }
 
     private void loadIdsInto(Path path, Set<String> target)
@@ -10512,20 +9321,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         }
 
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
-
-    private static final class OutboxRecord
-    {
-        private final String eventId;
-        private final String createdAt;
-        private final String payloadJson;
-
-        private OutboxRecord(String eventId, String createdAt, String payloadJson)
-        {
-            this.eventId = eventId;
-            this.createdAt = createdAt;
-            this.payloadJson = payloadJson;
-        }
     }
 
     private volatile java.util.List<AutoFlipBoardCard> autoFlipBoardCards = java.util.Collections.emptyList();
@@ -10874,84 +9669,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
         worker.setDaemon(true);
         worker.start();
     }
-    // Narrow fallback for Java runtimes that cannot validate autoflip.gg cert chain.
-    // Applies only to AutoFlip payload/ranked-pool fetch connections.
-    private static volatile javax.net.ssl.SSLSocketFactory autoFlipPayloadSslFallbackFactory = null;
-
-    private java.net.HttpURLConnection openAutoFlipPayloadConnection(java.net.URL endpoint) throws java.io.IOException
-    {
-        java.net.URLConnection rawConnection = endpoint.openConnection();
-
-        if (rawConnection instanceof javax.net.ssl.HttpsURLConnection
-            && endpoint != null
-            && "autoflip.gg".equalsIgnoreCase(endpoint.getHost()))
-        {
-            javax.net.ssl.HttpsURLConnection https = (javax.net.ssl.HttpsURLConnection) rawConnection;
-            try
-            {
-                https.setSSLSocketFactory(getAutoFlipPayloadSslFallbackFactory());
-                https.setHostnameVerifier(new javax.net.ssl.HostnameVerifier()
-                {
-                    @Override
-                    public boolean verify(String hostname, javax.net.ssl.SSLSession session)
-                    {
-                        return "autoflip.gg".equalsIgnoreCase(hostname);
-                    }
-                });
-                logAutoFlipVerbose("AUTOFLIP_PAYLOAD_SSL_FALLBACK enabled host=" + endpoint.getHost());
-            }
-            catch (Exception sslError)
-            {
-                logAutoFlipVerbose("AUTOFLIP_PAYLOAD_SSL_FALLBACK unavailable error=" + sslError.getClass().getSimpleName() + " message=" + safe(sslError.getMessage()));
-            }
-        }
-
-        return (java.net.HttpURLConnection) rawConnection;
-    }
-
-    private static javax.net.ssl.SSLSocketFactory getAutoFlipPayloadSslFallbackFactory() throws Exception
-    {
-        javax.net.ssl.SSLSocketFactory existing = autoFlipPayloadSslFallbackFactory;
-        if (existing != null)
-        {
-            return existing;
-        }
-
-        synchronized (AutoFlipPlugin.class)
-        {
-            if (autoFlipPayloadSslFallbackFactory != null)
-            {
-                return autoFlipPayloadSslFallbackFactory;
-            }
-
-            javax.net.ssl.TrustManager[] trustManagers = new javax.net.ssl.TrustManager[]
-            {
-                new javax.net.ssl.X509TrustManager()
-                {
-                    @Override
-                    public java.security.cert.X509Certificate[] getAcceptedIssuers()
-                    {
-                        return new java.security.cert.X509Certificate[0];
-                    }
-
-                    @Override
-                    public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType)
-                    {
-                    }
-
-                    @Override
-                    public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType)
-                    {
-                    }
-                }
-            };
-
-            javax.net.ssl.SSLContext context = javax.net.ssl.SSLContext.getInstance("TLS");
-            context.init(null, trustManagers, new java.security.SecureRandom());
-            autoFlipPayloadSslFallbackFactory = context.getSocketFactory();
-            return autoFlipPayloadSslFallbackFactory;
-        }
-    }
     private boolean fetchAutoFlipPayloadIfNeeded(boolean force)
     {
         if (!force && isAutoFlipPayloadFresh())
@@ -11038,67 +9755,57 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
     private String httpGetPayloadText(String url, boolean gzip, int timeoutMs)
     {
-        java.net.HttpURLConnection connection = null;
         try
         {
-            java.net.URL endpoint = new java.net.URL(url);
-            connection = openAutoFlipPayloadConnection(endpoint);
-            connection.setRequestMethod("GET");
-            connection.setConnectTimeout(timeoutMs);
-            connection.setReadTimeout(timeoutMs);
-            connection.setRequestProperty("Accept", gzip ? "application/gzip, application/json" : "application/json");
-            connection.setRequestProperty("User-Agent", "AutoFlip-RuneLite-Plugin/1.0");
+            Request request = new Request.Builder()
+                .url(url)
+                .header("Accept", gzip ? "application/gzip, application/json" : "application/json")
+                .header("User-Agent", "AutoFlip-RuneLite-Plugin/1.0")
+                .build();
 
-            int status = connection.getResponseCode();
-            java.io.InputStream raw = status >= 200 && status < 300
-                ? connection.getInputStream()
-                : connection.getErrorStream();
-
-            if (raw == null)
+            try (Response response = autoFlipHttpClient(timeoutMs).newCall(request).execute())
             {
-                logAutoFlipVerbose("AUTOFLIP_PAYLOAD_HTTP url=" + url + " status=" + status + " bytes=0");
-                return "";
-            }
-
-            java.io.InputStream stream = raw;
-            if (gzip)
-            {
-                try
+                int status = response.code();
+                if (response.body() == null)
                 {
-                    stream = new java.util.zip.GZIPInputStream(raw);
-                }
-                catch (Throwable gzipError)
-                {
-                    logAutoFlipVerbose("AUTOFLIP_PAYLOAD_HTTP gzip_decode_failed=" + safe(gzipError.getMessage()) + " fallback_plain=true");
-                    stream = raw;
-                }
-            }
-
-            try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(stream, java.nio.charset.StandardCharsets.UTF_8)))
-            {
-                StringBuilder builder = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null)
-                {
-                    builder.append(line);
+                    logAutoFlipVerbose("AUTOFLIP_PAYLOAD_HTTP url=" + url + " status=" + status + " bytes=0");
+                    return "";
                 }
 
-                String body = builder.toString();
-                logAutoFlipVerbose("AUTOFLIP_PAYLOAD_HTTP url=" + url + " status=" + status + " bytes=" + body.length());
-                return status >= 200 && status < 300 ? body : "";
+                byte[] responseBytes = response.body().bytes();
+                java.io.InputStream stream = new ByteArrayInputStream(responseBytes);
+                if (gzip)
+                {
+                    try
+                    {
+                        stream = new java.util.zip.GZIPInputStream(new ByteArrayInputStream(responseBytes));
+                    }
+                    catch (Throwable gzipError)
+                    {
+                        logAutoFlipVerbose("AUTOFLIP_PAYLOAD_HTTP gzip_decode_failed=" + safe(gzipError.getMessage()) + " fallback_plain=true");
+                        stream = new ByteArrayInputStream(responseBytes);
+                    }
+                }
+
+                try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(stream, java.nio.charset.StandardCharsets.UTF_8)))
+                {
+                    StringBuilder builder = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null)
+                    {
+                        builder.append(line);
+                    }
+
+                    String body = builder.toString();
+                    logAutoFlipVerbose("AUTOFLIP_PAYLOAD_HTTP url=" + url + " status=" + status + " bytes=" + body.length());
+                    return response.isSuccessful() ? body : "";
+                }
             }
         }
         catch (Exception error)
         {
             logAutoFlipVerbose("AUTOFLIP_PAYLOAD_HTTP url=" + url + " error=" + error.getClass().getSimpleName() + " message=" + safe(error.getMessage()));
             return "";
-        }
-        finally
-        {
-            if (connection != null)
-            {
-                connection.disconnect();
-            }
         }
     }
     private void refreshAutoFlipBoardCacheNow()
@@ -11137,7 +9844,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
     private String buildAutoFlipRankedPoolUrl(int limit)
     {
-        long cash = getCurrentCashStackGp();
+        long cash = client != null && client.isClientThread() ? getCurrentCashStackGp() : Math.max(0L, autoFlipLastObservedCashStackGp);
         long budget = autoFlipMenuUseCashStack ? cash : autoFlipMenuManualBudgetGp;
 
         if (budget <= 0L)
@@ -11175,40 +9882,26 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
     private String httpGetText(String url, int timeoutMs)
     {
-        java.net.HttpURLConnection connection = null;
         try
         {
-            java.net.URL endpoint = new java.net.URL(url);
-            connection = openAutoFlipPayloadConnection(endpoint);
-            connection.setRequestMethod("GET");
-            connection.setConnectTimeout(timeoutMs);
-            connection.setReadTimeout(timeoutMs);
-            connection.setRequestProperty("Accept", "application/json");
-            connection.setRequestProperty("User-Agent", "AutoFlip-RuneLite-Plugin/1.0");
+            Request request = new Request.Builder()
+                .url(url)
+                .header("Accept", "application/json")
+                .header("User-Agent", "AutoFlip-RuneLite-Plugin/1.0")
+                .build();
 
-            int status = connection.getResponseCode();
-            java.io.InputStream stream = status >= 200 && status < 300
-                ? connection.getInputStream()
-                : connection.getErrorStream();
-
-            if (stream == null)
+            try (Response response = autoFlipHttpClient(timeoutMs).newCall(request).execute())
             {
-                logAutoFlipVerbose("AUTOFLIP_RANKED_POOL_HTTP status=" + status + " bytes=0");
-                return "";
-            }
-
-            try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(stream, java.nio.charset.StandardCharsets.UTF_8)))
-            {
-                StringBuilder builder = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null)
+                int status = response.code();
+                if (response.body() == null)
                 {
-                    builder.append(line);
+                    logAutoFlipVerbose("AUTOFLIP_RANKED_POOL_HTTP status=" + status + " bytes=0");
+                    return "";
                 }
 
-                String body = builder.toString();
+                String body = response.body().string();
                 logAutoFlipVerbose("AUTOFLIP_RANKED_POOL_HTTP status=" + status + " bytes=" + body.length());
-                return status >= 200 && status < 300 ? body : "";
+                return response.isSuccessful() ? body : "";
             }
         }
         catch (Exception error)
@@ -11216,13 +9909,16 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             logAutoFlipVerbose("AUTOFLIP_RANKED_POOL_HTTP error=" + error.getClass().getSimpleName() + " message=" + safe(error.getMessage()));
             return "";
         }
-        finally
-        {
-            if (connection != null)
-            {
-                connection.disconnect();
-            }
-        }
+    }
+
+    private OkHttpClient autoFlipHttpClient(int timeoutMs)
+    {
+        OkHttpClient base = okHttpClient == null ? new OkHttpClient() : okHttpClient;
+        int timeout = Math.max(1000, timeoutMs);
+        return base.newBuilder()
+            .connectTimeout(timeout, TimeUnit.MILLISECONDS)
+            .readTimeout(timeout, TimeUnit.MILLISECONDS)
+            .build();
     }
 
     private java.util.List<AutoFlipBoardCard> parseAutoFlipBoardCards(String json)
@@ -11719,7 +10415,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
             if (autoFlipMenuUseCashStack && cachedCash <= 0L)
             {
-                liveCash = getCurrentCashStackGp();
+                liveCash = client != null && client.isClientThread() ? getCurrentCashStackGp() : 0L;
                 if (liveCash > 0L)
                 {
                     autoFlipLastObservedCashStackGp = liveCash;
@@ -11738,6 +10434,85 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             return Math.max(1L, autoFlipMenuManualBudgetGp);
         }
     }
+
+    private void triggerAutoFlipOptimizeBoard()
+    {
+        synchronized (this)
+        {
+            if (autoFlipOptimizeBoardInProgress)
+            {
+                logAutoFlipVerbose("AUTOFLIP_LOCAL_OPTIMIZE skipped=busy");
+                return;
+            }
+            autoFlipOptimizeBoardInProgress = true;
+        }
+
+        Thread worker = new Thread(() ->
+        {
+            autoFlipBoardMutationLock.lock();
+            try
+            {
+                pollGrandExchangeOffers();
+
+                if (!fetchAutoFlipPayloadIfNeeded(false))
+                {
+                    logAutoFlipVerbose("AUTOFLIP_LOCAL_OPTIMIZE loaded=false reason=payload_unavailable");
+                    return;
+                }
+
+                clearAutoFlipSkippedItemIds("optimize_board");
+                clearAutoFlipRetiredBoardSlots("optimize_board");
+
+                java.util.List<AutoFlipBoardCard> cards = buildAutoFlipBoardFromLocalPayload();
+                if (cards == null || cards.isEmpty())
+                {
+                    logAutoFlipVerbose("AUTOFLIP_LOCAL_OPTIMIZE loaded=false cards=0");
+                    return;
+                }
+
+                clearAutoFlipCardActionBounds();
+                clearAutoFlipCardBlockBounds();
+                cards = filterAutoFlipBoardCardsForAvailableSlots(cards, "optimize_board");
+                cards = localPayloadRescaleBoardCards(cards, getAutoFlipEffectiveBudgetGp());
+                captureAutoFlipCanonicalBoardCards(cards, "optimize_board");
+                autoFlipBoardCards = snapshotAutoFlipBoardCards(cards);
+                synchronized (this)
+                {
+                    for (AutoFlipBoardCard card : cards)
+                    {
+                        if (card != null && card.getItemId() > 0)
+                        {
+                            rememberAutoFlipSkippedItem(card.getItemId());
+                        }
+                    }
+                }
+                notifyAutoFlipSidePanelRefresh();
+
+                logAutoFlipVerbose(
+                    "AUTOFLIP_LOCAL_OPTIMIZE"
+                        + " loaded=true"
+                        + " cards=" + cards.size()
+                        + " budget_planned_gp=" + getAutoFlipBoardBudgetPlannedGp()
+                        + " expected_profit_gp=" + getAutoFlipBoardTotalExpectedProfitGp()
+                );
+            }
+            catch (Throwable error)
+            {
+                logAutoFlipUiError("local_optimize_board", error);
+            }
+            finally
+            {
+                autoFlipOptimizeBoardInProgress = false;
+                autoFlipBoardMutationLock.unlock();
+            }
+        }, "autoflip-local-optimize-board");
+
+        worker.setDaemon(true);
+        worker.start();
+
+        logAutoFlipMenuEvent("optimize_board_local_payload");
+    }
+
     private void triggerAutoFlipRefreshBoard()
     {
         Thread worker = new Thread(() ->
@@ -12446,7 +11221,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             return true;
         }
 
-        return !isAutoFlipMembersOnlyItem(itemId);
+        return !isAutoFlipMembersOnlyItemCachedForDebug(itemId);
     }
 
     public boolean isAutoFlipFreeToPlayAccount()
@@ -12464,12 +11239,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 return !worldTypes.contains(net.runelite.api.WorldType.MEMBERS);
             }
 
-            Integer membersVarbit = getAutoFlipMembersWorldVarbitId();
-            if (membersVarbit != null && membersVarbit > 0)
-            {
-                return client.getVarbitValue(membersVarbit) == 0;
-            }
-
             return true;
         }
         catch (Throwable error)
@@ -12477,43 +11246,6 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             logAutoFlipUiError("isAutoFlipFreeToPlayAccount", error);
             return false;
         }
-    }
-
-    private Integer getAutoFlipMembersWorldVarbitId()
-    {
-        try
-        {
-            for (java.lang.reflect.Field field : net.runelite.api.Varbits.class.getFields())
-            {
-                if (field == null)
-                {
-                    continue;
-                }
-
-                String name = field.getName();
-                if (name == null)
-                {
-                    continue;
-                }
-
-                String upper = name.toUpperCase(java.util.Locale.ROOT);
-                if (!upper.contains("MEMBER"))
-                {
-                    continue;
-                }
-
-                if (field.getType() == int.class)
-                {
-                    return field.getInt(null);
-                }
-            }
-        }
-        catch (Throwable error)
-        {
-            logAutoFlipUiError("getAutoFlipMembersWorldVarbitId", error);
-        }
-
-        return null;
     }
 
     private boolean isAutoFlipMembersOnlyItem(int itemId)
@@ -12574,7 +11306,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
         if (cachedCash <= 0L)
         {
-            liveCash = getCurrentCashStackGp();
+            liveCash = client != null && client.isClientThread() ? getCurrentCashStackGp() : 0L;
             if (liveCash > 0L)
             {
                 autoFlipLastObservedCashStackGp = liveCash;
@@ -14329,7 +13061,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
     }
     private String buildAutoFlipSettingsPayload()
     {
-        long cash = getCurrentCashStackGp();
+        long cash = client != null && client.isClientThread() ? getCurrentCashStackGp() : Math.max(0L, autoFlipLastObservedCashStackGp);
         long budget = autoFlipMenuUseCashStack ? cash : autoFlipMenuManualBudgetGp;
 
         return "{"
@@ -14347,23 +13079,7 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             return;
         }
 
-        Thread worker = new Thread(() ->
-        {
-            try
-            {
-                if (java.awt.Desktop.isDesktopSupported())
-                {
-                    java.awt.Desktop.getDesktop().browse(new java.net.URI(url.trim()));
-                }
-            }
-            catch (Throwable error)
-            {
-                logAutoFlipUiError("openAutoFlipMarketUrl", error);
-            }
-        }, "autoflip-open-market-url");
-
-        worker.setDaemon(true);
-        worker.start();
+        LinkBrowser.browse(url.trim());
     }
     public long getAutoFlipBoardBudgetPlannedGp()
     {
@@ -17487,10 +16203,10 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
             }
 
             return new Rectangle(
-                headerBounds.x + readIntConfig("setup.quick.x", 295),
-                headerBounds.y + readIntConfig("setup.quick.y", 186),
-                readIntConfig("setup.quick.w", 62),
-                readIntConfig("setup.quick.h", 28)
+                headerBounds.x + readIntConfig("setup.quick.x", 345),
+                headerBounds.y + readIntConfig("setup.quick.y", 177),
+                readIntConfig("setup.quick.w", 33),
+                readIntConfig("setup.quick.h", 23)
             );
         }
         catch (Throwable error)
@@ -17738,14 +16454,14 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
                 readIntConfig("setup.quantity.quick.h", 28)
             );
             Rectangle priceBounds = new Rectangle(
-                headerBounds.x + readIntConfig("setup.quick.x", 295),
-                headerBounds.y + readIntConfig("setup.quick.y", 186),
-                readIntConfig("setup.quick.w", 62),
-                readIntConfig("setup.quick.h", 28)
+                headerBounds.x + readIntConfig("setup.quick.x", 345),
+                headerBounds.y + readIntConfig("setup.quick.y", 177),
+                readIntConfig("setup.quick.w", 33),
+                readIntConfig("setup.quick.h", 23)
             );
             Rectangle confirmBounds = new Rectangle(
-                headerBounds.x + readIntConfig("setup.confirm.x", 172),
-                headerBounds.y + readIntConfig("setup.confirm.y", 251),
+                headerBounds.x + readIntConfig("setup.confirm.x", 161),
+                headerBounds.y + readIntConfig("setup.confirm.y", 244),
                 readIntConfig("setup.confirm.w", 152),
                 readIntConfig("setup.confirm.h", 39)
             );
@@ -18790,34 +17506,7 @@ return found;
             }
 
             int quantity = (int)Math.max(1L, Math.min(Integer.MAX_VALUE, amountGp));
-
-            try
-            {
-                java.lang.reflect.Method method = itemManager.getClass().getMethod("getImage", int.class, int.class, boolean.class);
-                Object image = method.invoke(itemManager, 995, quantity, true);
-                if (image instanceof java.awt.image.BufferedImage)
-                {
-                    return cleanAutoFlipCoinStackImage((java.awt.image.BufferedImage)image);
-                }
-            }
-            catch (Throwable ignored)
-            {
-            }
-
-            try
-            {
-                java.lang.reflect.Method method = itemManager.getClass().getMethod("getImage", int.class, int.class);
-                Object image = method.invoke(itemManager, 995, quantity);
-                if (image instanceof java.awt.image.BufferedImage)
-                {
-                    return cleanAutoFlipCoinStackImage((java.awt.image.BufferedImage)image);
-                }
-            }
-            catch (Throwable ignored)
-            {
-            }
-
-            return cleanAutoFlipCoinStackImage(itemManager.getImage(995));
+            return cleanAutoFlipCoinStackImage(itemManager.getImage(995, quantity, true));
         }
         catch (Throwable error)
         {
@@ -20178,10 +18867,10 @@ return found;
 
             String prefix = price ? "setup.price.value" : "setup.quantity.value";
             Rectangle field = new Rectangle(
-                header.x + readAutoFlipSetupDevInt(prefix + ".x", price ? 248 : 34),
-                header.y + readAutoFlipSetupDevInt(prefix + ".y", 150),
-                readAutoFlipSetupDevInt(prefix + ".w", price ? 210 : 188),
-                readAutoFlipSetupDevInt(prefix + ".h", 27)
+                header.x + readAutoFlipSetupConfigInt(prefix + ".x", price ? 248 : 34),
+                header.y + readAutoFlipSetupConfigInt(prefix + ".y", 150),
+                readAutoFlipSetupConfigInt(prefix + ".w", price ? 210 : 188),
+                readAutoFlipSetupConfigInt(prefix + ".h", 27)
             );
 
             net.runelite.api.widgets.Widget offerContainer = client.getWidget(

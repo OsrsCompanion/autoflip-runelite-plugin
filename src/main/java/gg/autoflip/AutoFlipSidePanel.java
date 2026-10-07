@@ -20,9 +20,6 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.awt.image.BufferedImage;
-import java.io.IOException;
-import java.net.URL;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -52,7 +49,6 @@ import javax.swing.SwingConstants;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.Scrollable;
-import javax.imageio.ImageIO;
 import net.runelite.client.ui.PluginPanel;
 
 public class AutoFlipSidePanel extends PluginPanel
@@ -105,7 +101,6 @@ public class AutoFlipSidePanel extends PluginPanel
     private static final Color TEXT = new Color(235, 232, 220);
     private static final Color PURPLE = new Color(104, 64, 220);
     private static final Color RED = new Color(170, 45, 45);
-    private static final String TO_BUY_POPUP_BACKGROUND_RESOURCE = "/gg/autoflip/Main.png";
     private static final int INVENTORY_VIEW_WIDTH = PluginPanel.PANEL_WIDTH - 8;
     private static final int TO_BUY_SEARCH_WINDOW_WIDTH = 1440;
 
@@ -114,9 +109,6 @@ public class AutoFlipSidePanel extends PluginPanel
     private final JPanel inventoryTabCardsPanel = new InventoryCardsPanel();
     private JTabbedPane mainTabs;
     private final JLabel inventoryTitle = new JLabel("AUTOFLIP INVENTORY");
-    private JButton autoFlipInventoryBankViewButton;
-    private long autoFlipLastBankButtonVisualLogMs = 0L;
-
     private final JLabel heldCount = new JLabel("0 held");
     private final JLabel nextAction = new JLabel("Shift + right-click an item");
     private final JLabel apiStatus = new JLabel("Local hold list");
@@ -160,35 +152,10 @@ public class AutoFlipSidePanel extends PluginPanel
 
     private static final class PopupBackgroundPanel extends JPanel
     {
-        private final BufferedImage backgroundImage;
-
-        private PopupBackgroundPanel(BufferedImage backgroundImage)
+        private PopupBackgroundPanel()
         {
-            this.backgroundImage = backgroundImage;
             setOpaque(true);
-        }
-
-        @Override
-        protected void paintComponent(Graphics g)
-        {
-            super.paintComponent(g);
-            if (backgroundImage == null)
-            {
-                return;
-            }
-
-            Graphics2D g2 = (Graphics2D) g.create();
-            try
-            {
-                g2.drawImage(backgroundImage, 0, 0, getWidth(), getHeight(), null);
-                // Keep the artwork atmospheric while guaranteeing text contrast.
-                g2.setColor(new Color(0, 0, 0, 190));
-                g2.fillRect(0, 0, getWidth(), getHeight());
-            }
-            finally
-            {
-                g2.dispose();
-            }
+            setBackground(BG);
         }
     }
 
@@ -487,73 +454,15 @@ public class AutoFlipSidePanel extends PluginPanel
     }
 
 
-    private void updateAutoFlipInventoryBankViewButtonState()
-    {
-        if (autoFlipInventoryBankViewButton == null)
-        {
-            return;
-        }
-
-        boolean bankOpen = false;
-        try
-        {
-            bankOpen = plugin != null && plugin.isAutoFlipBankOpenForSidePanel();
-        }
-        catch (Throwable ignored)
-        {
-            bankOpen = false;
-        }
-
-        autoFlipInventoryBankViewButton.setFocusPainted(false);
-        autoFlipInventoryBankViewButton.setOpaque(true);
-        autoFlipInventoryBankViewButton.setContentAreaFilled(true);
-        autoFlipInventoryBankViewButton.setFont(autoFlipInventoryBankViewButton.getFont().deriveFont(Font.BOLD, 15f));
-
-        if (bankOpen)
-        {
-            autoFlipInventoryBankViewButton.setForeground(GOLD);
-            autoFlipInventoryBankViewButton.setBackground(new Color(76, 54, 8));
-            autoFlipInventoryBankViewButton.setBorder(BorderFactory.createLineBorder(new Color(255, 214, 79), 2));
-            autoFlipInventoryBankViewButton.setToolTipText("Bank open: show AutoFlip Inventory items in bank");
-            autoFlipInventoryBankViewButton.setText("<html><span style='color:#FFD64F; font-weight:bold;'>$</span></html>");
-        }
-        else
-        {
-            autoFlipInventoryBankViewButton.setForeground(new Color(90, 90, 90));
-            autoFlipInventoryBankViewButton.setBackground(new Color(22, 22, 22));
-            autoFlipInventoryBankViewButton.setBorder(BorderFactory.createLineBorder(new Color(46, 46, 46), 1));
-            autoFlipInventoryBankViewButton.setToolTipText("Open your bank to show AutoFlip Inventory items");
-            autoFlipInventoryBankViewButton.setText("<html><span style='color:#6A6A6A; font-weight:bold;'>$</span></html>");
-        }
-
-        autoFlipInventoryBankViewButton.revalidate();
-        autoFlipInventoryBankViewButton.repaint();
-    }
-
     private JPanel buildInventoryHeader()
     {
         JPanel p = rowPanel();
         inventoryTitle.setForeground(GOLD);
         inventoryTitle.setFont(inventoryTitle.getFont().deriveFont(Font.BOLD, 14f));
         heldCount.setForeground(GREEN);
-        autoFlipInventoryBankViewButton = new JButton("◎");
-        JButton bankView = autoFlipInventoryBankViewButton;
-        bankView.setForeground(GOLD);
-        bankView.setBackground(new Color(30, 30, 30));
-        bankView.setFocusPainted(false);
-        bankView.setBorder(BorderFactory.createEmptyBorder(0, 0, 1, 0));
-        bankView.setMargin(new java.awt.Insets(0, 0, 0, 0));
-        bankView.setPreferredSize(new Dimension(22, 18));
-        bankView.setMinimumSize(new Dimension(22, 18));
-        bankView.setMaximumSize(new Dimension(22, 18));
-        bankView.setToolTipText("Show AutoFlip Inventory items in bank");
-        bankView.addActionListener(e -> plugin.openAutoFlipInventoryBankView());
-        updateAutoFlipInventoryBankViewButtonState();
 
         p.add(inventoryTitle);
         p.add(Box.createHorizontalGlue());
-        p.add(bankView);
-        p.add(Box.createHorizontalStrut(4));
         p.add(heldCount);
         return p;
     }
@@ -1867,7 +1776,7 @@ if (items.isEmpty())
 
     private JPanel buildToBuySearchWindowContent(JDialog dialog)
     {
-        JPanel root = new PopupBackgroundPanel(loadToBuyPopupBackgroundImage());
+        JPanel root = new PopupBackgroundPanel();
         root.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
         root.setLayout(new BorderLayout(0, 10));
 
@@ -2069,23 +1978,6 @@ if (items.isEmpty())
         installToBuySearchWindowKeyBindings(root, leftScroll);
         refreshToBuySearchWindowViews();
         return root;
-    }
-
-    private static BufferedImage loadToBuyPopupBackgroundImage()
-    {
-        try
-        {
-            URL resource = AutoFlipSidePanel.class.getResource(TO_BUY_POPUP_BACKGROUND_RESOURCE);
-            if (resource != null)
-            {
-                return ImageIO.read(resource);
-            }
-        }
-        catch (IOException ignored)
-        {
-        }
-
-        return null;
     }
 
     private void refreshToBuySearchWindowViews()

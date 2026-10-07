@@ -23,6 +23,11 @@ dependencies {
 
 if (autoFlipLocalDebugEnabled) {
     sourceSets.main.java.srcDir 'src/localDebug/java'
+    tasks.named('compileJava') {
+        source = source.filter { file ->
+            !file.path.replace('\\', '/').endsWith('/src/main/java/gg/autoflip/AutoFlipDebugBridge.java')
+        }
+    }
 }
 
 tasks.withType(JavaCompile).configureEach {

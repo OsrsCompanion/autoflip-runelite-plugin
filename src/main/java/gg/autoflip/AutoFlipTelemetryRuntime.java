@@ -3,9 +3,6 @@ package gg.autoflip;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,8 +19,14 @@ import java.util.function.BooleanSupplier;
 import java.util.function.IntSupplier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPOutputStream;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +55,7 @@ final class AutoFlipTelemetryRuntime
     private final String accountKey;
     private final IntSupplier currentWorldSupplier;
     private final BooleanSupplier verboseLoggingSupplier;
+    private final OkHttpClient okHttpClient;
     private final Set<String> ackedEventIds = new HashSet<>();
     private final ExecutorService senderExecutor = Executors.newSingleThreadExecutor();
 
@@ -67,7 +71,8 @@ final class AutoFlipTelemetryRuntime
         String localSalt,
         String accountKey,
         IntSupplier currentWorldSupplier,
-        BooleanSupplier verboseLoggingSupplier
+        BooleanSupplier verboseLoggingSupplier,
+        OkHttpClient okHttpClient
     )
     {
         this.runtimeDir = runtimeDir;
@@ -84,6 +89,7 @@ final class AutoFlipTelemetryRuntime
         this.accountKey = accountKey == null ? "unknown_account" : accountKey;
         this.currentWorldSupplier = currentWorldSupplier == null ? () -> 0 : currentWorldSupplier;
         this.verboseLoggingSupplier = verboseLoggingSupplier == null ? () -> false : verboseLoggingSupplier;
+        this.okHttpClient = okHttpClient == null ? new OkHttpClient() : okHttpClient;
     }
 
     void ensureRuntimeDir()
@@ -761,38 +767,27 @@ final class AutoFlipTelemetryRuntime
 
     private String postJson(String urlString, String body) throws IOException
     {
-        URL url = new URL(urlString);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         boolean compressed = telemetryGzipUploadSupported;
-
-        conn.setRequestMethod("POST");
-        conn.setConnectTimeout(5000);
-        conn.setReadTimeout(10000);
-        conn.setDoOutput(true);
-        conn.setRequestProperty("Content-Type", compressed ? "application/gzip" : "application/json; charset=utf-8");
-        conn.setRequestProperty("Accept", "application/json");
-
         byte[] jsonBytes = body.getBytes(StandardCharsets.UTF_8);
         byte[] bodyBytes = compressed ? gzipBytes(jsonBytes) : jsonBytes;
-        conn.setRequestProperty("Content-Length", Integer.toString(bodyBytes.length));
-
-        try (OutputStream os = conn.getOutputStream())
-        {
-            os.write(bodyBytes);
-        }
-
         archiveTelemetryUploadBatch(bodyBytes, compressed);
 
-        int status = conn.getResponseCode();
-        InputStream stream = status >= 200 && status < 300 ? conn.getInputStream() : conn.getErrorStream();
-        String response = readAll(stream);
+        MediaType mediaType = MediaType.parse(compressed ? "application/gzip" : "application/json; charset=utf-8");
+        Request request = new Request.Builder()
+            .url(urlString)
+            .post(RequestBody.create(mediaType, bodyBytes))
+            .header("Accept", "application/json")
+            .build();
 
-        if (status < 200 || status >= 300)
+        try (Response response = httpClient(10000).newCall(request).execute())
         {
-            throw new IOException("HTTP " + status + " " + response);
+            String responseBody = response.body() == null ? "" : response.body().string();
+            if (!response.isSuccessful())
+            {
+                throw new IOException("HTTP " + response.code() + " " + responseBody);
+            }
+            return responseBody;
         }
-
-        return response;
     }
 
     private byte[] gzipBytes(byte[] input) throws IOException
@@ -972,21 +967,31 @@ final class AutoFlipTelemetryRuntime
         return sb.toString();
     }
 
-    private static String httpGetText(String urlString, int timeoutMs) throws IOException
+    private String httpGetText(String urlString, int timeoutMs) throws IOException
     {
-        HttpURLConnection conn = (HttpURLConnection) new URL(urlString).openConnection();
-        conn.setRequestMethod("GET");
-        conn.setConnectTimeout(timeoutMs);
-        conn.setReadTimeout(timeoutMs);
+        Request request = new Request.Builder()
+            .url(urlString)
+            .header("Accept", "application/json")
+            .build();
 
-        int status = conn.getResponseCode();
-        InputStream stream = status >= 200 && status < 300 ? conn.getInputStream() : conn.getErrorStream();
-        String response = readAll(stream);
-        if (status < 200 || status >= 300)
+        try (Response response = httpClient(timeoutMs).newCall(request).execute())
         {
-            throw new IOException("HTTP " + status + " " + response);
+            String responseBody = response.body() == null ? "" : response.body().string();
+            if (!response.isSuccessful())
+            {
+                throw new IOException("HTTP " + response.code() + " " + responseBody);
+            }
+            return responseBody;
         }
-        return response;
+    }
+
+    private OkHttpClient httpClient(int timeoutMs)
+    {
+        int timeout = Math.max(1000, timeoutMs);
+        return okHttpClient.newBuilder()
+            .connectTimeout(timeout, TimeUnit.MILLISECONDS)
+            .readTimeout(timeout, TimeUnit.MILLISECONDS)
+            .build();
     }
 
     private static List<String> parseStringArray(String json, String key)
