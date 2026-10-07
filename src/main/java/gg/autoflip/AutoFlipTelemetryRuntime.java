@@ -89,7 +89,7 @@ final class AutoFlipTelemetryRuntime
         this.accountKey = accountKey == null ? "unknown_account" : accountKey;
         this.currentWorldSupplier = currentWorldSupplier == null ? () -> 0 : currentWorldSupplier;
         this.verboseLoggingSupplier = verboseLoggingSupplier == null ? () -> false : verboseLoggingSupplier;
-        this.okHttpClient = okHttpClient == null ? new OkHttpClient() : okHttpClient;
+        this.okHttpClient = okHttpClient;
     }
 
     void ensureRuntimeDir()

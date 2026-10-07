@@ -9913,9 +9913,8 @@ boolean isEmptyBaseline = isEmpty && lastCanonicalSnapshots[slot] == null;
 
     private OkHttpClient autoFlipHttpClient(int timeoutMs)
     {
-        OkHttpClient base = okHttpClient == null ? new OkHttpClient() : okHttpClient;
         int timeout = Math.max(1000, timeoutMs);
-        return base.newBuilder()
+        return okHttpClient.newBuilder()
             .connectTimeout(timeout, TimeUnit.MILLISECONDS)
             .readTimeout(timeout, TimeUnit.MILLISECONDS)
             .build();
