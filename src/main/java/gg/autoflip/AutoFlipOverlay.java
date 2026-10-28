@@ -33,8 +33,12 @@ public class AutoFlipOverlay extends Overlay
     private java.awt.image.BufferedImage autoFlipSetupLogoAssetImage;
     private java.awt.image.BufferedImage autoFlipSetupTaglineAssetImage;
     private java.awt.image.BufferedImage autoFlipSetupQuantityHintPanelAssetImage;
+     private java.awt.image.BufferedImage autoFlipSetupPriceHintPanelAssetImage; // Patch 002 //test: cache price hint panel asset.
     private java.awt.image.BufferedImage autoFlipSetupPriceInputFrameAssetImage;
     private java.awt.image.BufferedImage autoFlipSetupQuantityInputFrameAssetImage;
+    private final java.util.Map<String, java.awt.image.BufferedImage> autoFlipSetupAssetCache = new java.util.HashMap<>(); // Patch 004 //test: cache guided setup assets outside the paint loop.
+    private java.util.Properties autoFlipSetupDevTextProperties; // Patch 007 //test: retain custom guided text after one load.
+    private boolean autoFlipSetupDevTextLoadAttempted; // Patch 007 //test: prevent filesystem reads from the paint loop.
     private transient java.awt.image.BufferedImage autoFlipSetupLogoWatermarkImage;
     private transient boolean autoFlipSetupLogoWatermarkLoadAttempted;
     private static final String LOGO_RESOURCE = "/gg/autoflip/AppIcon_GeButton24.png";
@@ -90,8 +94,10 @@ public class AutoFlipOverlay extends Overlay
 
         boolean geOpen = plugin.isGeWindowOpenForOverlay();
         boolean workflowActive = plugin.isAutoFlipUiWorkflowActiveForOverlay();
-        if (!geOpen && !workflowActive)
+        boolean guidedTransitionActive = plugin.isAutoFlipGuidedSetupTransitionActiveForOverlay();
+        if (!geOpen && !workflowActive && !guidedTransitionActive)
         {
+            // CLEANUP #34: temporary overlay gate tracer disabled after FPS verification. //test
             plugin.rememberAutoFlipButtonBounds(null);
             plugin.clearAutoFlipGeMarketLinkBounds();
             return null;
@@ -99,14 +105,17 @@ public class AutoFlipOverlay extends Overlay
 
         if (workflowActive)
         {
-            // AUTOFLIP_TINKER_STATE_LABEL_ALWAYS_ON_V2
-            drawAutoFlipStateDetectorLabel(graphics, null);
+            // FPS/TOKEN TEST 1: disable the Tinker-only per-frame state detector label.
+            // The label performs recursive widget/state detection during overlay paint.
+            // Keep the call commented for reversible smoke testing.
+            // drawAutoFlipStateDetectorLabel(graphics, null);
             drawReadyToSellInventoryNotifier(graphics);
             drawAutoFlipOrdinarySellPromptActions(graphics);
         }
 
-        if (!geOpen)
+        if (!geOpen && !guidedTransitionActive)
         {
+            // CLEANUP #34: temporary overlay gate tracer disabled after FPS verification. //test
             plugin.rememberAutoFlipButtonBounds(null);
             plugin.clearAutoFlipGeMarketLinkBounds();
             return null;
@@ -115,6 +124,7 @@ public class AutoFlipOverlay extends Overlay
         Rectangle header = plugin.getGeHeaderBoundsForOverlay();
         if (header == null)
         {
+            // CLEANUP #34: temporary overlay gate tracer disabled after FPS verification. //test
             plugin.rememberAutoFlipButtonBounds(null);
             plugin.clearAutoFlipGeMarketLinkBounds();
             return null;
@@ -138,8 +148,9 @@ public class AutoFlipOverlay extends Overlay
 
         drawButton(graphics, buttonX, buttonY, buttonSize, active);
 
-        if (!active && !workflowActive)
+        if (!active && !workflowActive && !guidedTransitionActive)
         {
+            // CLEANUP #34: temporary overlay gate tracer disabled after FPS verification. //test
             plugin.clearAutoFlipGeMarketLinkBounds();
             return null;
         }
@@ -183,20 +194,42 @@ public class AutoFlipOverlay extends Overlay
 
 
         String geTitle = plugin.getGeHeaderTextForOverlay();
-        boolean guidedSetup = plugin.getAutoFlipSetupTargetBoardCard() != null;
+        boolean guidedSetup = plugin.getAutoFlipSetupTargetBoardCard() != null
+            || plugin.isAutoFlipGuidedSetupWorkflowOwnedForOverlay();
+        /* possibly old code removing duplicate guided-workflow detector scans for this test
         boolean ordinarySellPromptOpen = plugin.isAutoFlipOrdinarySellPricePromptOpenForOverlay();
         boolean ordinarySellMismatch = plugin.isAutoFlipOrdinarySellPriceMismatchForOverlay();
         boolean ordinaryBuyPromptOpen = plugin.isAutoFlipOrdinaryBuyPricePromptOpenForOverlay();
         boolean ordinaryBuyMismatch = plugin.isAutoFlipOrdinaryBuyPriceMismatchForOverlay();
+        */
+        boolean ordinarySellPromptOpen = !guidedSetup && plugin.isAutoFlipOrdinarySellPricePromptOpenForOverlay(); //test
+        boolean ordinarySellMismatch = !guidedSetup && plugin.isAutoFlipOrdinarySellPriceMismatchForOverlay(); //test
+        boolean ordinaryBuyPromptOpen = !guidedSetup && plugin.isAutoFlipOrdinaryBuyPricePromptOpenForOverlay(); //test
+        boolean ordinaryBuyMismatch = !guidedSetup && plugin.isAutoFlipOrdinaryBuyPriceMismatchForOverlay(); //test
         boolean ordinarySellPrice = ordinarySellPromptOpen || ordinarySellMismatch || ordinaryBuyPromptOpen || ordinaryBuyMismatch;
-        if (AutoFlipOrdinarySellEligibility.shouldRenderSetupFlow(active, guidedSetup, ordinarySellPrice))
+        /* TEST PATCH #14: trace the final guided-flow render gate; no behavior change. //test
+           Purpose: separate state detection from overlay eligibility failures. //test
+           Cleanup note: remove this tracer after the gate cause is confirmed. //test */
+        // FPS/TOKEN TEST 1: render-path gate tracing disabled during performance smoke test.
+        /* plugin.appendAutoFlipOverlayGateTraceForTest(
+            "guided_render_gate",
+            true,
+            guidedSetup,
+            guidedTransitionActive,
+            active,
+            header); */
+        if (AutoFlipOrdinarySellEligibility.shouldRenderSetupFlow(active || guidedTransitionActive, guidedSetup, ordinarySellPrice))
         {
+            /* possibly old title-only gate removed because the native title changes during search handoff //test
             if (geTitle != null
                 && geTitle.startsWith("Grand Exchange: Set up offer")
                 && (guidedSetup || ordinarySellPrice))
+            */
+            boolean guidedTitleHandoff = guidedSetup || guidedTransitionActive; //test
+            boolean ordinaryTitleVisible = geTitle != null //test
+                && geTitle.toLowerCase(java.util.Locale.ROOT).contains("grand exchange"); //test
+            if (guidedTitleHandoff || (ordinaryTitleVisible && ordinarySellPrice)) //test
             {
-                // AUTOFLIP_GE_SETUP_MODE_PROBE_RENDER_V1
-                // AUTOFLIP_GUIDED_SETUP_FLOW_DRAW_CALL_V14
                 drawAutoFlipGuidedSetupFlowOverlay(graphics, header);
                 if (guidedSetup)
                 {
@@ -209,7 +242,6 @@ public class AutoFlipOverlay extends Overlay
 
         if (active && !autoFlipSetupWindowForControls)
         {
-            // AUTOFLIP_HIDE_REFRESH_ON_GE_SETUP_V1
             int refreshWidth = 96;
             int refreshGap = 10;
             drawRefreshBoardButton(graphics, buttonX - refreshWidth - refreshGap, buttonY, refreshWidth, buttonSize);
@@ -220,28 +252,33 @@ public class AutoFlipOverlay extends Overlay
             int menuX = header.x + header.width + config.menuOffsetX();
             int menuY = header.y + config.menuOffsetY();
 
-            drawMenuShell(graphics, menuX, menuY);
-            plugin.maybeRefreshAutoFlipBoardCache();
+            /* Patch 010 //test: idle GE dashboard render disabled to isolate the 10 FPS baseline.
+             * The icon and guided buy-window renderer remain active. The right-side dashboard,
+             * ghost cards, and summary strip were being repainted every frame on the main GE screen.
+             * Restore this block only after measuring the idle-GE FPS contribution.
+             */
+            drawMenuShell(graphics, menuX, menuY); // Patch 011 //test: restore only the dashboard shell and Optimize UI after Patch 010 isolated its cost.
+            // plugin.maybeRefreshAutoFlipBoardCache(); // Patch 010 //test
             if (!autoFlipSetupWindowForControls)
             {
-                drawStaticGhostCards(graphics);
-                drawAutoFlipBoardSummaryStrip(graphics);
+                // drawStaticGhostCards(graphics); // Patch 010 //test
+                // drawAutoFlipBoardSummaryStrip(graphics); // Patch 010 //test
             }
                 if (config.editModeEnabled())
                 {
-                    drawEditHandles(graphics);
+                    // drawEditHandles(graphics); // Patch 010 //test
                 }
                 if (config.explanationPanelEnabled())
                 {
-                    drawExplanationPanel(graphics, header);
+                    // drawExplanationPanel(graphics, header); // Patch 010 //test
                 }
         }
 
         // Draw the normal toggle again after menu/cards so active offer cards cannot cover the logo.
         drawButton(graphics, buttonX, buttonY, buttonSize, active);
 
-        drawGeMarketItemLinks(graphics);
-        drawAutoFlipSellGuidance(graphics);
+        drawGeMarketItemLinks(graphics); // Patch 014 //test: tracer removed from temporary submission; preserve the original render path.
+        drawAutoFlipSellGuidance(graphics); // Patch 014 //test: tracer removed from temporary submission; preserve the original render path.
 
         return null;
     }
@@ -250,17 +287,13 @@ public class AutoFlipOverlay extends Overlay
 
 
 
-    // AUTOFLIP_STATE_DETECTOR_LABEL_V5_DRAW_METHOD
-    // AUTOFLIP_STATE_DETECTOR_LABEL_V5_DRAW_METHOD
     private void drawAutoFlipStateDetectorLabel(Graphics2D graphics, Rectangle header)
     {
-        // AUTOFLIP_STATE_DETECTOR_LABEL_V7_DRAW_METHOD
         if (graphics == null || plugin == null)
         {
             return;
         }
 
-        // AUTOFLIP_TINKER_ONLY_STATE_LABEL_GATE_V2
         String userDir = System.getProperty("user.dir", "");
         if (userDir == null || !userDir.replace('\\', '/').toLowerCase().contains("plugin-tinker"))
         {
@@ -313,7 +346,6 @@ public class AutoFlipOverlay extends Overlay
             return;
         }
 
-        // AUTOFLIP_GE_SETUP_ITEM_TARGET_V1
         AutoFlipPlugin.AutoFlipBoardCard card = plugin.getAutoFlipSetupTargetBoardCard();
         boolean sellPlan = card != null && isAutoFlipSellPlan(card.getReason(), card.getItemName());
 
@@ -350,13 +382,10 @@ public class AutoFlipOverlay extends Overlay
 
         if (config.editModeEnabled())
         {
-            // AUTOFLIP_SETUP_ITEM_TARGET_EDIT_DRAW_V1
             drawNativeHoleEditHandle(graphics, "ITEM", itemBox, primary);
 
-            // AUTOFLIP_SETUP_QUICK_SET_EDIT_DRAW_V1
             drawNativeHoleEditHandle(graphics, "QUICK", quickBox, primary);
 
-            // AUTOFLIP_SETUP_CONFIRM_EDIT_DRAW_V1
             drawNativeHoleEditHandle(graphics, "CONFIRM", confirmBox, primary);
         }
 
@@ -408,7 +437,6 @@ public class AutoFlipOverlay extends Overlay
         graphics.setColor(new Color(238, 229, 196, 255));
         graphics.drawString(label, itemBox.x + itemBox.width + 8, itemBox.y + 16);
 
-        // AUTOFLIP_SETUP_QUICK_SET_BOX_V1
         graphics.setColor(new Color(0, 0, 0, 130));
         graphics.fillRoundRect(quickBox.x + 2, quickBox.y + 2, quickBox.width, quickBox.height, 7, 7);
         graphics.setColor(fill);
@@ -419,7 +447,6 @@ public class AutoFlipOverlay extends Overlay
 
         graphics.setFont(oldFont.deriveFont(Font.BOLD, quickBox.height >= 32 ? 12.0f : 10.0f));
         FontMetrics quickMetrics = graphics.getFontMetrics();
-        // AUTOFLIP_BLANK_QUICK_SET_TEXT_V1
                 String quickLabel = "Qty " + Math.max(1, card.getQuantity());
                 graphics.setColor(new Color(255, 245, 190, 255));
                 graphics.drawString(
@@ -428,7 +455,6 @@ public class AutoFlipOverlay extends Overlay
             quickBox.y + ((quickBox.height - quickMetrics.getHeight()) / 2) + quickMetrics.getAscent()
         );
 
-        // AUTOFLIP_SETUP_CONFIRM_BOX_V1
         graphics.setColor(new Color(0, 0, 0, 145));
         graphics.fillRoundRect(confirmBox.x + 3, confirmBox.y + 3, confirmBox.width, confirmBox.height, 8, 8);
         graphics.setColor(fill);
@@ -570,6 +596,7 @@ public class AutoFlipOverlay extends Overlay
         if (graphics == null || plugin == null
             || (!plugin.isAutoFlipOrdinarySellPricePromptOpenForOverlay()
                 && !plugin.isAutoFlipOrdinaryBuyPricePromptOpenForOverlay()
+                && !plugin.isAutoFlipGuidedSetupWorkflowOwnedForOverlay()
                 && !plugin.isAutoFlipTargetBuyPricePromptOpenForOverlay()
                 && plugin.getAutoFlipQuantityChatboxButtonBounds() == null))
         {
@@ -1048,7 +1075,6 @@ public class AutoFlipOverlay extends Overlay
                     );
                 }
 
-                // AUTOFLIP_CARD_SURFACE_BLOCKS_NATIVE_GE_DYNAMIC_V1
                 // The AutoFlip card is the input-blocking surface. Only the tuned native Buy/Sell hole remains pass-through.
                 Rectangle cardSurfaceBounds = new Rectangle(cardX, cardY, cardWidth, cardHeight);
                 rememberAutoFlipSlotMaskBlockBounds(cardSurfaceBounds, nativeButtonHole);
@@ -1070,7 +1096,6 @@ public class AutoFlipOverlay extends Overlay
             }
         }
 
-        // AUTOFLIP_NO_LEGACY_DUMMY_BOARD_PLACEHOLDERS_V1
         // If no real local/Release cards are loaded, render no fake board cards.
         // This prevents old test items from flashing before the real payload-backed board exists.
     }
@@ -1536,7 +1561,6 @@ public class AutoFlipOverlay extends Overlay
             drawEditHandle(graphics, "", x + config.cardTotalLabelX(), y + config.cardTotalLabelY() - config.editTextBoxBaselinePadY(), config.editTotalLabelBoxWidth(), config.editTextBoxHeight());
             drawEditHandle(graphics, "", x + config.cardTotalValueX(), y + config.cardTotalValueY() - config.editTextBoxBaselinePadY(), config.editTotalValueBoxWidth(), config.editTextBoxHeight());
 
-            // AUTOFLIP_TUNABLE_BUY_SELL_HOLE_EDIT_HANDLES_V1
             Rectangle buyHole = new Rectangle(
                 x + config.getInt("native.buy.hole.x", 2),
                 y + config.getInt("native.buy.hole.y", 61),
@@ -1573,7 +1597,6 @@ public class AutoFlipOverlay extends Overlay
 
         try
         {
-            // AUTOFLIP_NATIVE_HOLE_EDIT_HANDLE_HELPER_V1
             // Outline only: do not paint a filled green/blue rectangle over the native GE button.
             graphics.setStroke(new BasicStroke(2.0f));
             graphics.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 210));
@@ -1611,7 +1634,6 @@ public class AutoFlipOverlay extends Overlay
     }
     private boolean isAutoFlipSellPlan(String reason, String itemName)
     {
-        // AUTOFLIP_STRICT_SELL_PLAN_CLASSIFICATION_V1
         // Recommendation cards often mention "sell" in normal flip explanations.
         // Default to BUY unless the backend/reason gives a clear sell directive.
         String text = (reason == null ? "" : reason).trim().toLowerCase(java.util.Locale.ROOT);
@@ -1627,7 +1649,6 @@ public class AutoFlipOverlay extends Overlay
 
     private Rectangle getAutoFlipNativeButtonHole(int cardX, int cardY, int cardWidth, int cardHeight, boolean sellPlan)
     {
-        // AUTOFLIP_TUNABLE_NATIVE_BUTTON_HOLE_V1
         // Tuned live from _runtime/overlay_dev_config.properties.
         String prefix = sellPlan ? "native.sell.hole." : "native.buy.hole.";
 
@@ -1697,7 +1718,6 @@ public class AutoFlipOverlay extends Overlay
 
         // Keep the ghost card opaque/click-blocking, but visually match the native GE empty-slot panel.
         Color shadow = new Color(66, 61, 50, 20);
-        // AUTOFLIP_OPAQUE_SLOT_MASK_V1
         // Make the custom slot mask strong enough to hide the native Buy/Sell button except through the clear window.
         Color card = new Color(76, 70, 58, Math.max(245, config.cardAlpha()));
         Color top = new Color(76, 70, 58, Math.max(235, config.cardTopAlpha()));
@@ -2005,7 +2025,6 @@ public class AutoFlipOverlay extends Overlay
 
         return base.deriveFont(style, size * config.cardFontScale());
     }
-    // AUTOFLIP_GUIDED_SETUP_FLOW_DRAW_METHOD_V14
     private void drawAutoFlipGuidedSetupFlowOverlay(Graphics2D graphics, Rectangle header)
     {
         if (graphics == null || plugin == null)
@@ -2013,6 +2032,7 @@ public class AutoFlipOverlay extends Overlay
             return;
         }
 
+        /* possibly old code removing ordinary price-stage precedence over the official state machine for this test
         boolean ordinarySellPromptOpen = plugin.isAutoFlipOrdinarySellPricePromptOpenForOverlay();
         boolean ordinarySellMismatch = plugin.isAutoFlipOrdinarySellPriceMismatchForOverlay();
         boolean ordinaryBuyPromptOpen = plugin.isAutoFlipOrdinaryBuyPricePromptOpenForOverlay();
@@ -2023,6 +2043,14 @@ public class AutoFlipOverlay extends Overlay
             : (ordinarySellMismatch || ordinaryBuyMismatch)
                 ? "price_click"
                 : plugin.getAutoFlipGuidedSetupStage();
+        */
+        boolean guidedWorkflowOwned = plugin.isAutoFlipGuidedSetupWorkflowOwnedForOverlay(); //test
+        boolean ordinarySellPromptOpen = !guidedWorkflowOwned && plugin.isAutoFlipOrdinarySellPricePromptOpenForOverlay(); //test
+        boolean ordinarySellMismatch = !guidedWorkflowOwned && plugin.isAutoFlipOrdinarySellPriceMismatchForOverlay(); //test
+        boolean ordinaryBuyPromptOpen = !guidedWorkflowOwned && plugin.isAutoFlipOrdinaryBuyPricePromptOpenForOverlay(); //test
+        boolean ordinaryBuyMismatch = !guidedWorkflowOwned && plugin.isAutoFlipOrdinaryBuyPriceMismatchForOverlay(); //test
+        boolean ordinarySellPrice = ordinarySellPromptOpen || ordinarySellMismatch || ordinaryBuyPromptOpen || ordinaryBuyMismatch; //test
+        String stage = plugin.getAutoFlipGuidedSetupStage(); //test
         if (stage == null || stage.isEmpty())
         {
             return;
@@ -2157,6 +2185,7 @@ public class AutoFlipOverlay extends Overlay
         {
             activeHole = priceHole;
             activeLabel = "Price";
+            solidActive = true; //test
         }
         else if ("price_enter".equals(stage))
         {
@@ -2169,6 +2198,18 @@ public class AutoFlipOverlay extends Overlay
             activeHole = confirmHole;
             activeLabel = "Confirm";
         }
+
+        /* TEST PATCH #15: trace the selected visual hole after stage mapping; no behavior change. //test
+           Purpose: verify quantity/price stages reach the drawing call with valid bounds. //test
+           Cleanup note: remove after confirming the renderer path. //test */
+        // FPS/TOKEN TEST 1: active-hole render tracing disabled during performance smoke test.
+        /* plugin.appendAutoFlipOverlayGateTraceForTest(
+            "active_hole stage=" + stage + " bounds=" + (activeHole == null ? "null" : activeHole.toString()),
+            true,
+            guidedWorkflowOwned,
+            false,
+            plugin.isAutoFlipOverlayActive(),
+            header); */
 
         Font oldFont = graphics.getFont();
         Color oldColor = graphics.getColor();
@@ -2223,11 +2264,9 @@ public class AutoFlipOverlay extends Overlay
                 {
                     if (config.getInt("setup.asset.buy.item.frame.enabled", 1) != 0)
                     {
-                        try (java.io.InputStream autoFlipBuyItemFrameIn = AutoFlipOverlay.class.getResourceAsStream("/autoflip/setup_ui/pick_item_tile_bg.png"))
-                        {
-                            if (autoFlipBuyItemFrameIn != null)
-                            {
-                                java.awt.image.BufferedImage autoFlipBuyItemFrameImage = javax.imageio.ImageIO.read(autoFlipBuyItemFrameIn);
+                        java.awt.image.BufferedImage autoFlipBuyItemFrameImage = getAutoFlipSetupAssetImage("/autoflip/setup_ui/pick_item_tile_bg.png"); // Patch 004 //test
+                        if (autoFlipBuyItemFrameImage != null) // Patch 004 //test
+                        { // Patch 004 //test
                                 Rectangle autoFlipBuyItemFrameBox = new Rectangle(
                                     header.x + config.getInt("setup.asset.buy.item.frame.x", 54),
                                     header.y + config.getInt("setup.asset.buy.item.frame.y", 61),
@@ -2236,17 +2275,17 @@ public class AutoFlipOverlay extends Overlay
                                 );
                                 drawAutoFlipSetupImageAsset(graphics, autoFlipBuyItemFrameImage, autoFlipBuyItemFrameBox,
                                     config.getInt("setup.asset.buy.item.frame.alpha", 55), true);
-                            }
-                        }
+                        } // Patch 004 //test
+                        /* Patch 004 //test: old per-render stream/decode path disabled for FPS cleanup.
+                         * Restore only if cached asset rendering fails a targeted visual test.
+                         */
                     }
 
                     if (config.getInt("setup.asset.confirm.button.frame.enabled", 1) != 0)
                     {
-                        try (java.io.InputStream autoFlipConfirmFrameIn = AutoFlipOverlay.class.getResourceAsStream("/autoflip/setup_ui/review_message_bar_bg.png"))
-                        {
-                            if (autoFlipConfirmFrameIn != null)
-                            {
-                                java.awt.image.BufferedImage autoFlipConfirmFrameImage = javax.imageio.ImageIO.read(autoFlipConfirmFrameIn);
+                        java.awt.image.BufferedImage autoFlipConfirmFrameImage = getAutoFlipSetupAssetImage("/autoflip/setup_ui/review_message_bar_bg.png"); // Patch 004 //test
+                        if (autoFlipConfirmFrameImage != null) // Patch 004 //test
+                        { // Patch 004 //test
                                 Rectangle autoFlipConfirmFrameBox = new Rectangle(
                                     header.x + config.getInt("setup.asset.confirm.button.frame.x", 161),
                                     header.y + config.getInt("setup.asset.confirm.button.frame.y", 244),
@@ -2255,8 +2294,10 @@ public class AutoFlipOverlay extends Overlay
                                 );
                                 drawAutoFlipSetupImageAsset(graphics, autoFlipConfirmFrameImage, autoFlipConfirmFrameBox,
                                     config.getInt("setup.asset.confirm.button.frame.alpha", 72), true);
-                            }
-                        }
+                        } // Patch 004 //test
+                        /* Patch 004 //test: old per-render stream/decode path disabled for FPS cleanup.
+                         * Restore only if cached asset rendering fails a targeted visual test.
+                         */
                     }
                 }
                 catch (Exception ignored)
@@ -2269,11 +2310,9 @@ public class AutoFlipOverlay extends Overlay
                 {
                     if (config.getInt("setup.asset.item.description.frame.enabled", 1) != 0)
                     {
-                        try (java.io.InputStream autoFlipItemDescFrameIn = AutoFlipOverlay.class.getResourceAsStream("/autoflip/setup_ui/review_message_bar_bg.png"))
-                        {
-                            if (autoFlipItemDescFrameIn != null)
-                            {
-                                java.awt.image.BufferedImage autoFlipItemDescFrameImage = javax.imageio.ImageIO.read(autoFlipItemDescFrameIn);
+                        java.awt.image.BufferedImage autoFlipItemDescFrameImage = getAutoFlipSetupAssetImage("/autoflip/setup_ui/review_message_bar_bg.png"); // Patch 004 //test
+                        if (autoFlipItemDescFrameImage != null) // Patch 004 //test
+                        { // Patch 004 //test
                                 Rectangle autoFlipItemDescFrameBox = new Rectangle(
                                     header.x + config.getInt("setup.asset.item.description.frame.x", 160),
                                     header.y + config.getInt("setup.asset.item.description.frame.y", 33),
@@ -2282,17 +2321,17 @@ public class AutoFlipOverlay extends Overlay
                                 );
                                 drawAutoFlipSetupImageAsset(graphics, autoFlipItemDescFrameImage, autoFlipItemDescFrameBox,
                                     config.getInt("setup.asset.item.description.frame.alpha", 88), true);
-                            }
-                        }
+                        } // Patch 004 //test
+                        /* Patch 004 //test: old per-render stream/decode path disabled for FPS cleanup.
+                         * Restore only if cached asset rendering fails a targeted visual test.
+                         */
                     }
 
                     if (config.getInt("setup.asset.final.price.frame.enabled", 1) != 0)
                     {
-                        try (java.io.InputStream autoFlipFinalPriceFrameIn = AutoFlipOverlay.class.getResourceAsStream("/autoflip/setup_ui/final_price_bar_bg.png"))
-                        {
-                            if (autoFlipFinalPriceFrameIn != null)
-                            {
-                                java.awt.image.BufferedImage autoFlipFinalPriceFrameImage = javax.imageio.ImageIO.read(autoFlipFinalPriceFrameIn);
+                        java.awt.image.BufferedImage autoFlipFinalPriceFrameImage = getAutoFlipSetupAssetImage("/autoflip/setup_ui/final_price_bar_bg.png"); // Patch 004 //test
+                        if (autoFlipFinalPriceFrameImage != null) // Patch 004 //test
+                        { // Patch 004 //test
                                 Rectangle autoFlipFinalPriceFrameBox = new Rectangle(
                                     header.x + config.getInt("setup.asset.final.price.frame.x", 34),
                                     header.y + config.getInt("setup.asset.final.price.frame.y", 205),
@@ -2301,8 +2340,10 @@ public class AutoFlipOverlay extends Overlay
                                 );
                                 drawAutoFlipSetupImageAsset(graphics, autoFlipFinalPriceFrameImage, autoFlipFinalPriceFrameBox,
                                     config.getInt("setup.asset.final.price.frame.alpha", 94), true);
-                            }
-                        }
+                        } // Patch 004 //test
+                        /* Patch 004 //test: old per-render stream/decode path disabled for FPS cleanup.
+                         * Restore only if cached asset rendering fails a targeted visual test.
+                         */
                     }
                 }
                 catch (Exception ignored)
@@ -2315,11 +2356,9 @@ public class AutoFlipOverlay extends Overlay
                 {
                     if (config.getInt("setup.asset.buy.item.gold.edge.enabled", 1) != 0)
                     {
-                        try (java.io.InputStream autoFlipBuyItemGoldIn = AutoFlipOverlay.class.getResourceAsStream("/autoflip/setup_ui/buy_item_gold_edge_frame.png"))
-                        {
-                            if (autoFlipBuyItemGoldIn != null)
-                            {
-                                java.awt.image.BufferedImage autoFlipBuyItemGoldImage = javax.imageio.ImageIO.read(autoFlipBuyItemGoldIn);
+                        java.awt.image.BufferedImage autoFlipBuyItemGoldImage = getAutoFlipSetupAssetImage("/autoflip/setup_ui/buy_item_gold_edge_frame.png"); // Patch 004 //test
+                        if (autoFlipBuyItemGoldImage != null) // Patch 004 //test
+                        { // Patch 004 //test
                                 if (autoFlipBuyItemGoldImage != null)
                                 {
                                     Rectangle autoFlipBuyItemGoldBox = new Rectangle(
@@ -2331,17 +2370,17 @@ public class AutoFlipOverlay extends Overlay
                                     drawAutoFlipSetupImageAsset(graphics, autoFlipBuyItemGoldImage, autoFlipBuyItemGoldBox,
                                         config.getInt("setup.asset.buy.item.gold.edge.alpha", 88), true);
                                 }
-                            }
-                        }
+                        } // Patch 004 //test
+                        /* Patch 004 //test: old per-render stream/decode path disabled for FPS cleanup.
+                         * Restore only if cached asset rendering fails a targeted visual test.
+                         */
                     }
 
                     if (config.getInt("setup.asset.confirm.gold.rune.enabled", 1) != 0)
                     {
-                        try (java.io.InputStream autoFlipConfirmGoldIn = AutoFlipOverlay.class.getResourceAsStream("/autoflip/setup_ui/confirm_gold_rune_button.png"))
-                        {
-                            if (autoFlipConfirmGoldIn != null)
-                            {
-                                java.awt.image.BufferedImage autoFlipConfirmGoldImage = javax.imageio.ImageIO.read(autoFlipConfirmGoldIn);
+                        java.awt.image.BufferedImage autoFlipConfirmGoldImage = getAutoFlipSetupAssetImage("/autoflip/setup_ui/confirm_gold_rune_button.png"); // Patch 004 //test
+                        if (autoFlipConfirmGoldImage != null) // Patch 004 //test
+                        { // Patch 004 //test
                                 if (autoFlipConfirmGoldImage != null)
                                 {
                                     Rectangle autoFlipConfirmGoldBox = new Rectangle(
@@ -2353,8 +2392,10 @@ public class AutoFlipOverlay extends Overlay
                                     drawAutoFlipSetupImageAsset(graphics, autoFlipConfirmGoldImage, autoFlipConfirmGoldBox,
                                         config.getInt("setup.asset.confirm.gold.rune.alpha", 88), true);
                                 }
-                            }
-                        }
+                        } // Patch 004 //test
+                        /* Patch 004 //test: old per-render stream/decode path disabled for FPS cleanup.
+                         * Restore only if cached asset rendering fails a targeted visual test.
+                         */
                     }
 
                     if (config.getInt("setup.confirm.custom.text.enabled", 1) != 0)
@@ -2370,30 +2411,10 @@ public class AutoFlipOverlay extends Overlay
                                 config.getInt("setup.confirm.w", 164),
                                 config.getInt("setup.confirm.h", 40)
                             );
-                            try
-                            {
-                                java.util.Properties autoFlipConfirmProps = new java.util.Properties();
-                                java.nio.file.Path autoFlipConfirmPath = java.nio.file.Paths.get("_runtime", "overlay_dev_config.properties");
-                                if (!java.nio.file.Files.exists(autoFlipConfirmPath))
-                                {
-                                    autoFlipConfirmPath = java.nio.file.Paths.get("C:\\osrs-flip-assistant\\Plugin-Tinker\\_runtime\\overlay_dev_config.properties");
-                                }
-                                if (java.nio.file.Files.exists(autoFlipConfirmPath))
-                                {
-                                    try (java.io.Reader autoFlipConfirmReader = java.nio.file.Files.newBufferedReader(autoFlipConfirmPath, java.nio.charset.StandardCharsets.UTF_8))
-                                    {
-                                        autoFlipConfirmProps.load(autoFlipConfirmReader);
-                                    }
-                                    String configuredConfirmText = autoFlipConfirmProps.getProperty("setup.confirm.custom.text");
-                                    if (configuredConfirmText != null && !configuredConfirmText.trim().isEmpty())
-                                    {
-                                        autoFlipConfirmText = configuredConfirmText.trim();
-                                    }
-                                }
-                            }
-                            catch (Exception ignored)
-                            {
-                            }
+                            autoFlipConfirmText = getAutoFlipSetupDevText("setup.confirm.custom.text", ""); // Patch 007 //test
+                            /* Patch 007 //test: old per-frame properties-file read disabled for FPS cleanup.
+                             * The one-time helper preserves the same fallback and configured text.
+                             */
 
                             Font autoFlipConfirmBaseFont = oldFont == null ? autoFlipConfirmOldFont : oldFont;
                             graphics.setFont(autoFlipConfirmBaseFont.deriveFont(Font.BOLD, (float) config.getInt("setup.confirm.custom.text.font.size", 17)));
@@ -2422,30 +2443,10 @@ public class AutoFlipOverlay extends Overlay
                     try
                     {
                         String autoFlipReviewMessageText = "Review offer before confirming";
-                        try
-                        {
-                            java.util.Properties autoFlipReviewProps = new java.util.Properties();
-                            java.nio.file.Path autoFlipReviewPath = java.nio.file.Paths.get("_runtime", "overlay_dev_config.properties");
-                            if (!java.nio.file.Files.exists(autoFlipReviewPath))
-                            {
-                                autoFlipReviewPath = java.nio.file.Paths.get("C:\\osrs-flip-assistant\\Plugin-Tinker\\_runtime\\overlay_dev_config.properties");
-                            }
-                            if (java.nio.file.Files.exists(autoFlipReviewPath))
-                            {
-                                try (java.io.Reader autoFlipReviewReader = java.nio.file.Files.newBufferedReader(autoFlipReviewPath, java.nio.charset.StandardCharsets.UTF_8))
-                                {
-                                    autoFlipReviewProps.load(autoFlipReviewReader);
-                                }
-                                String configuredReviewMessage = autoFlipReviewProps.getProperty("setup.review.message.text");
-                                if (configuredReviewMessage != null && !configuredReviewMessage.trim().isEmpty())
-                                {
-                                    autoFlipReviewMessageText = configuredReviewMessage.trim();
-                                }
-                            }
-                        }
-                        catch (Exception ignored)
-                        {
-                        }
+                        autoFlipReviewMessageText = getAutoFlipSetupDevText("setup.review.message.text", autoFlipReviewMessageText); // Patch 007 //test
+                        /* Patch 007 //test: old per-frame properties-file read disabled for FPS cleanup.
+                         * The one-time helper preserves the same fallback and configured text.
+                         */
 
                         Font autoFlipReviewBaseFont = oldFont == null ? autoFlipReviewOldFont : oldFont;
                         graphics.setFont(autoFlipReviewBaseFont.deriveFont(Font.BOLD, (float) config.getInt("setup.review.message.font.size", 12)));
@@ -2541,27 +2542,10 @@ public class AutoFlipOverlay extends Overlay
                     config.getInt("setup.hint.color.b", 142),
                     config.getInt("setup.hint.color.a", 245)
                 ));
-                String priceHintText = "AutoFlip enters optimized price";
-                try
-                {
-                    java.nio.file.Path path = java.nio.file.Paths.get("C:\\osrs-flip-assistant\\Plugin-Tinker\\_runtime\\overlay_dev_config.properties");
-                    if (java.nio.file.Files.exists(path))
-                    {
-                        java.util.Properties props = new java.util.Properties();
-                        try (java.io.Reader reader = java.nio.file.Files.newBufferedReader(path, java.nio.charset.StandardCharsets.UTF_8))
-                        {
-                            props.load(reader);
-                        }
-                        String configuredText = props.getProperty("setup.hint.price.text");
-                        if (configuredText != null && !configuredText.trim().isEmpty())
-                        {
-                            priceHintText = configuredText.trim();
-                        }
-                    }
-                }
-                catch (Exception ignored)
-                {
-                }
+                String priceHintText = getAutoFlipSetupDevText("setup.hint.price.text", "AutoFlip enters optimized price"); // Patch 008 //test: reuse the one-time guided text cache.
+                /* Patch 008 //test: old per-frame properties-file read disabled for FPS cleanup.
+                 * The shared helper preserves the configured text and fallback.
+                 */
                 graphics.drawString(priceHintText,
                     header.x + config.getInt("setup.hint.price.x", 250),
                     header.y + config.getInt("setup.hint.price.y", 192)
@@ -2653,17 +2637,17 @@ public class AutoFlipOverlay extends Overlay
             return;
         }
 
+        java.awt.image.BufferedImage image = getAutoFlipSetupPriceHintPanelImage(); // Patch 002 //test: render cached asset instead of reading PNG every frame.
+        if (image == null) // Patch 002 //test
+        {
+            return; // Patch 002 //test
+        }
+        /* Patch 002 //test: old per-render ImageIO path retained for rollback reference.
         try (java.io.InputStream in = AutoFlipOverlay.class.getResourceAsStream("/autoflip/setup_ui/hint_panel_price_bg.png"))
         {
-            if (in == null)
-            {
-                return;
-            }
+            if (in == null) return;
             java.awt.image.BufferedImage image = javax.imageio.ImageIO.read(in);
-            if (image == null)
-            {
-                return;
-            }
+            if (image == null) return;
             Rectangle box = new Rectangle(
                 header.x + config.getInt("setup.asset.price.hint.bg.x", 246),
                 header.y + config.getInt("setup.asset.price.hint.bg.y", 175),
@@ -2675,6 +2659,84 @@ public class AutoFlipOverlay extends Overlay
         catch (Exception ignored)
         {
         }
+        */
+        Rectangle box = new Rectangle( // Patch 002 //test
+            header.x + config.getInt("setup.asset.price.hint.bg.x", 246), // Patch 002 //test
+            header.y + config.getInt("setup.asset.price.hint.bg.y", 175), // Patch 002 //test
+            config.getInt("setup.asset.price.hint.bg.w", 180), // Patch 002 //test
+            config.getInt("setup.asset.price.hint.bg.h", 27) // Patch 002 //test
+        ); // Patch 002 //test
+        drawAutoFlipSetupImageAsset(graphics, image, box, config.getInt("setup.asset.price.hint.bg.alpha", 96), true); // Patch 002 //test
+    }
+
+    private java.awt.image.BufferedImage getAutoFlipSetupAssetImage(String resourcePath) // Patch 004 //test: load each guided asset once per overlay lifetime.
+    { // Patch 004 //test
+        if (resourcePath == null || resourcePath.isEmpty()) // Patch 004 //test
+        { // Patch 004 //test
+            return null; // Patch 004 //test
+        } // Patch 004 //test
+        if (autoFlipSetupAssetCache.containsKey(resourcePath)) // Patch 004 //test
+        { // Patch 004 //test
+            return autoFlipSetupAssetCache.get(resourcePath); // Patch 004 //test
+        } // Patch 004 //test
+        try (java.io.InputStream in = AutoFlipOverlay.class.getResourceAsStream(resourcePath)) // Patch 004 //test
+        { // Patch 004 //test
+            java.awt.image.BufferedImage image = in == null ? null : javax.imageio.ImageIO.read(in); // Patch 004 //test
+            autoFlipSetupAssetCache.put(resourcePath, image); // Patch 004 //test
+            return image; // Patch 004 //test
+        } // Patch 004 //test
+        catch (Exception ignored) // Patch 004 //test
+        { // Patch 004 //test
+            autoFlipSetupAssetCache.put(resourcePath, null); // Patch 004 //test
+            return null; // Patch 004 //test
+        } // Patch 004 //test
+    } // Patch 004 //test
+
+    private String getAutoFlipSetupDevText(String key, String fallback) // Patch 007 //test: read development text once outside the render loop.
+    { // Patch 007 //test
+        if (!autoFlipSetupDevTextLoadAttempted) // Patch 007 //test
+        { // Patch 007 //test
+            autoFlipSetupDevTextLoadAttempted = true; // Patch 007 //test
+            autoFlipSetupDevTextProperties = new java.util.Properties(); // Patch 007 //test
+            try // Patch 007 //test
+            { // Patch 007 //test
+                java.nio.file.Path path = java.nio.file.Paths.get("_runtime", "overlay_dev_config.properties"); // Patch 007 //test
+                if (!java.nio.file.Files.exists(path)) // Patch 007 //test
+                { // Patch 007 //test
+                    path = java.nio.file.Paths.get("C:\\osrs-flip-assistant\\Plugin-Tinker\\_runtime\\overlay_dev_config.properties"); // Patch 007 //test
+                } // Patch 007 //test
+                if (java.nio.file.Files.exists(path)) // Patch 007 //test
+                { // Patch 007 //test
+                    try (java.io.Reader reader = java.nio.file.Files.newBufferedReader(path, java.nio.charset.StandardCharsets.UTF_8)) // Patch 007 //test
+                    { // Patch 007 //test
+                        autoFlipSetupDevTextProperties.load(reader); // Patch 007 //test
+                    } // Patch 007 //test
+                } // Patch 007 //test
+            } // Patch 007 //test
+            catch (Exception ignored) // Patch 007 //test
+            { // Patch 007 //test
+            } // Patch 007 //test
+        } // Patch 007 //test
+        String value = autoFlipSetupDevTextProperties.getProperty(key); // Patch 007 //test
+        return value == null || value.trim().isEmpty() ? fallback : value.trim(); // Patch 007 //test
+    } // Patch 007 //test
+
+    private java.awt.image.BufferedImage getAutoFlipSetupPriceHintPanelImage() // Patch 002 //test
+    { // Patch 002 //test
+        if (autoFlipSetupPriceHintPanelAssetImage != null) // Patch 002 //test
+        { // Patch 002 //test
+            return autoFlipSetupPriceHintPanelAssetImage; // Patch 002 //test
+        } // Patch 002 //test
+        try (java.io.InputStream in = AutoFlipOverlay.class.getResourceAsStream("/autoflip/setup_ui/hint_panel_price_bg.png")) // Patch 002 //test
+        { // Patch 002 //test
+            if (in == null) return null; // Patch 002 //test
+            autoFlipSetupPriceHintPanelAssetImage = javax.imageio.ImageIO.read(in); // Patch 002 //test
+            return autoFlipSetupPriceHintPanelAssetImage; // Patch 002 //test
+        } // Patch 002 //test
+        catch (Exception ignored) // Patch 002 //test
+        { // Patch 002 //test
+            return null; // Patch 002 //test
+        } // Patch 002 //test
     }
     private java.awt.image.BufferedImage getAutoFlipSetupQuantityHintPanelImage()
     {
